@@ -48,4 +48,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     runTests: (folderPath) => ipcRenderer.invoke('run-tests', folderPath),
     getPings: () => ipcRenderer.invoke('get-pings'),
     setTrayTheme: (theme) => ipcRenderer.send('set-tray-theme', theme),
+
+    // App Updates
+    checkAppUpdate: () => ipcRenderer.invoke('check-app-update'),
+    downloadAppUpdate: (url) => ipcRenderer.invoke('download-app-update', url),
 });

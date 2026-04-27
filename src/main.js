@@ -5,22 +5,37 @@ const net = require('net');
 const { spawn, exec, execSync } = require('child_process');
 const https = require('https');
 
-const APP_VERSION = '0.9.0';
+const APP_VERSION = '1.0.0';
 const UPDATE_URL = 'https://raw.githubusercontent.com/murzikovv/zapret-gui-remake/main/version.json';
 
 ipcMain.handle('check-app-update', async () => {
+    console.log('[UPDATE] Checking for updates at:', UPDATE_URL);
     return new Promise((resolve) => {
-        https.get(UPDATE_URL, { headers: { 'User-Agent': 'ZapretGUI-App' } }, (res) => {
+        const urlWithCacheBust = UPDATE_URL + '?t=' + Date.now();
+        https.get(urlWithCacheBust, { headers: { 'User-Agent': 'ZapretGUI-App' } }, (res) => {
+            console.log('[UPDATE] Server response status:', res.statusCode);
+            if (res.statusCode !== 200) {
+                console.error('[UPDATE] Failed to fetch version.json, status:', res.statusCode);
+                resolve({ success: false });
+                return;
+            }
             let data = '';
             res.on('data', (chunk) => data += chunk);
             res.on('end', () => {
                 try {
                     const info = JSON.parse(data);
                     const hasUpdate = info.version !== APP_VERSION;
+                    console.log('[UPDATE] Found version:', info.version, 'Current:', APP_VERSION, 'HasUpdate:', hasUpdate);
                     resolve({ success: true, hasUpdate, version: info.version, url: info.url, changelog: info.changelog });
-                } catch (e) { resolve({ success: false }); }
+                } catch (e) { 
+                    console.error('[UPDATE] JSON Parse Error:', e.message);
+                    resolve({ success: false }); 
+                }
             });
-        }).on('error', () => resolve({ success: false }));
+        }).on('error', (e) => {
+            console.error('[UPDATE] Request Error:', e.message);
+            resolve({ success: false });
+        });
     });
 });
 
@@ -28,7 +43,7 @@ ipcMain.handle('download-app-update', async (event, url) => {
     return new Promise((resolve) => {
         const tempPath = path.join(app.getPath('temp'), 'ZapretGUISetup.exe');
         const file = fs.createWriteStream(tempPath);
-        
+
         const handleRes = (res) => {
             if (res.statusCode === 301 || res.statusCode === 302) {
                 https.get(res.headers.location, handleRes);
@@ -38,9 +53,9 @@ ipcMain.handle('download-app-update', async (event, url) => {
             let current = 0;
             res.on('data', (chunk) => {
                 current += chunk.length;
-                mainWindow.webContents.send('download-progress', { 
-                    percent: Math.round(current/total*100), 
-                    text: 'Загрузка обновления...' 
+                mainWindow.webContents.send('download-progress', {
+                    percent: Math.round(current / total * 100),
+                    text: 'Загрузка обновления...'
                 });
             });
             res.pipe(file);
@@ -70,12 +85,12 @@ if (process.platform === 'win32' && !isAdmin()) {
     try {
         let command = process.execPath;
         let argsList = app.isPackaged ? process.argv.slice(1) : [app.getAppPath(), ...process.argv.slice(2)];
-        
+
         // Use a temporary VBScript for robust elevation without quoting hell
         const vbsPath = path.join(app.getPath('userData'), 'elevate.vbs');
         const vbsCode = `Set UAC = CreateObject("Shell.Application")\r\nUAC.ShellExecute "${command}", "${argsList.join(' ')}", "", "runas", 1`;
         fs.writeFileSync(vbsPath, vbsCode, 'utf-8');
-        
+
         exec(`cscript //nologo "${vbsPath}"`, (err) => {
             if (err) console.error('[STARTUP] Failed to elevate:', err);
             app.quit();
@@ -115,7 +130,7 @@ if (!fs.existsSync(MIGRATION_FLAG)) {
             if (fs.existsSync(srcPath)) {
                 const srcContent = fs.readFileSync(srcPath, 'utf-8').trim();
                 const dstContent = fs.existsSync(dstPath) ? fs.readFileSync(dstPath, 'utf-8').trim() : '';
-                
+
                 if (srcContent && !dstContent) {
                     fs.writeFileSync(dstPath, srcContent + '\n', 'utf-8');
                     console.log(`[MIGRATE] Preserved content from ${src} into ${dst}`);
@@ -240,7 +255,7 @@ function toggleTrayWindow() {
             mainWindow.webContents.executeJavaScript(`localStorage.getItem('zapret-theme') || 'dark'`)
                 .then(theme => {
                     if (trayWindow) trayWindow.webContents.send('update-theme', theme);
-                }).catch(() => {});
+                }).catch(() => { });
         }
     }
 }
@@ -655,7 +670,7 @@ ipcMain.handle('download-install-zapret', async (event, { url, version }) => {
                                 // Disable auto-updater which opens the browser
                                 const checkUpdatesFile = path.join(versionDir, 'utils', 'check_updates.enabled');
                                 if (fs.existsSync(checkUpdatesFile)) {
-                                    try { fs.unlinkSync(checkUpdatesFile); } catch(e) {}
+                                    try { fs.unlinkSync(checkUpdatesFile); } catch (e) { }
                                 }
                                 resolve({ success: true, path: versionDir, version });
                             }
@@ -759,7 +774,7 @@ ipcMain.handle('update-hosts', async (event, folderPath) => {
         const url = 'https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/refs/heads/main/.service/hosts';
         const tempFile = path.join(app.getPath('temp'), 'zapret_hosts.txt');
         const ps = `Invoke-WebRequest -Uri '${url}' -UseBasicParsing | Select-Object -ExpandProperty Content | Out-File -FilePath '${tempFile}' -Encoding UTF8`;
-        
+
         exec(`powershell -NoProfile -Command "${ps}"`, (err) => {
             if (err) return resolve({ success: false, error: 'Ошибка загрузки hosts файла' });
             exec(`start notepad "${tempFile}"`);
@@ -774,7 +789,7 @@ ipcMain.handle('run-diagnostics', async (event, folderPath) => {
         // Flowseal: диагностика через test zapret.ps1
         const psScript = path.join(folderPath, 'utils', 'test zapret.ps1');
         const blockcheck = path.join(folderPath, 'blockcheck.cmd');
-        
+
         if (fs.existsSync(psScript)) {
             exec(`start "" powershell -NoProfile -ExecutionPolicy Bypass -File "${psScript}"`, { cwd: folderPath });
             resolve({ success: true });
@@ -791,7 +806,7 @@ ipcMain.handle('run-tests', async (event, folderPath) => {
     return new Promise((resolve) => {
         const psScript = path.join(folderPath, 'utils', 'test zapret.ps1');
         const cmdScript = path.join(folderPath, 'test.cmd');
-        
+
         if (fs.existsSync(psScript)) {
             exec(`start "" powershell -NoProfile -ExecutionPolicy Bypass -File "${psScript}"`, { cwd: folderPath });
             resolve({ success: true });
@@ -890,7 +905,7 @@ ipcMain.handle('save-list', async (event, { folderPath, filename, content }) => 
 ipcMain.handle('install-service', async (event, folderPath) => {
     const serviceScript = path.join(folderPath, 'service_install.bat');
     const serviceBat = path.join(folderPath, 'service.bat');
-    
+
     if (fs.existsSync(serviceScript)) {
         exec(`start "" cmd.exe /k "${serviceScript}"`, { cwd: folderPath });
         return true;
@@ -904,7 +919,7 @@ ipcMain.handle('install-service', async (event, folderPath) => {
 ipcMain.handle('remove-service', async (event, folderPath) => {
     const removeScript = path.join(folderPath, 'service_remove.bat');
     const serviceBat = path.join(folderPath, 'service.bat');
-    
+
     if (fs.existsSync(removeScript)) {
         exec(`start "" cmd.exe /k "${removeScript}"`, { cwd: folderPath });
         return true;

@@ -171,13 +171,16 @@ setTimeout(connectAnalytics, 2000);
 let latestAppUpdateUrl = null;
 
 el('btn-app-update').onclick = async () => {
+    console.log('[UI] Update button clicked');
     el('modal-app-update').classList.remove('hidden');
     el('update-version-label').textContent = 'Проверка обновлений...';
     el('update-progress-wrap').classList.add('hidden');
     el('btn-app-download-now').classList.add('hidden');
     
     try {
+        console.log('[UI] Calling api.checkAppUpdate()...');
         const res = await api.checkAppUpdate();
+        console.log('[UI] Update check result:', res);
         if (res.success) {
             if (res.hasUpdate) {
                 el('update-version-label').innerHTML = `
