@@ -8,6 +8,9 @@
 </head>
 <body>
 
+    <!-- App Background -->
+    <div id="app-bg"></div>
+
     <!-- Titlebar -->
     <div class="titlebar">
         <div class="titlebar-left">
@@ -39,6 +42,7 @@
                 <div class="theme-dot t-midnight" data-theme="midnight" title="Midnight"></div>
                 <div class="theme-dot t-slate" data-theme="slate" title="Slate"></div>
                 <div class="theme-dot t-mocha" data-theme="mocha" title="Mocha"></div>
+                <div class="theme-dot t-light" data-theme="light" title="Light"></div>
                 <div class="theme-dot t-custom" data-theme="custom" title="Своя тема (RGB)"></div>
             </div>
             <div style="width:1px; height:14px; background:var(--border); margin:0 6px;"></div>
@@ -401,7 +405,7 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
-            <div class="modal-body" style="display:flex; flex-direction:column; gap:0;">
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:0; overflow-y:auto; max-height:70vh;">
                 <!-- Quick presets -->
                 <div style="margin-bottom:14px;">
                     <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; color:var(--text-3); margin-bottom:8px;">Быстрый старт</div>
@@ -410,16 +414,55 @@
                         <button class="theme-preset-btn" onclick="loadEditorPreset('midnight')">Midnight</button>
                         <button class="theme-preset-btn" onclick="loadEditorPreset('slate')">Slate</button>
                         <button class="theme-preset-btn" onclick="loadEditorPreset('mocha')">Mocha</button>
+                        <button class="theme-preset-btn" onclick="loadEditorPreset('light')">Light</button>
                     </div>
                 </div>
+
+                <!-- Background image -->
+                <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--border);">
+                    <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; color:var(--text-3); margin-bottom:8px;">Фон приложения</div>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn-secondary" id="btn-bg-upload" style="flex:1; font-size:0.8rem;">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 5 17 10"/><line x1="12" y1="5" x2="12" y2="15"/></svg>
+                                Загрузить картинку
+                            </button>
+                            <button class="btn-secondary" id="btn-bg-remove" style="font-size:0.8rem; color:var(--error); border-color:var(--error);">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                                Убрать
+                            </button>
+                        </div>
+                        <div id="bg-preview" style="display:none; width:100%; height:60px; border-radius:var(--radius-sm); background-size:cover; background-position:center; border:1px solid var(--border); position:relative;">
+                            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:0.72rem; color:var(--text-2); background:rgba(0,0,0,0.35); border-radius:var(--radius-sm);">Предпросмотр</div>
+                        </div>
+                        <input type="file" id="bg-file-input" accept="image/*" style="display:none;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="font-size:0.8rem; color:var(--text-2); white-space:nowrap;">Размытие фона</span>
+                            <input type="range" id="bg-blur-slider" min="0" max="30" value="0" step="1" style="flex:1; accent-color:var(--accent);">
+                            <span id="bg-blur-value" style="font-size:0.78rem; color:var(--text-2); min-width:28px; text-align:right;">0px</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="font-size:0.8rem; color:var(--text-2); white-space:nowrap;">Размытие UI</span>
+                            <input type="range" id="ui-blur-slider" min="0" max="30" value="16" step="1" style="flex:1; accent-color:var(--accent);">
+                            <span id="ui-blur-value" style="font-size:0.78rem; color:var(--text-2); min-width:28px; text-align:right;">16px</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; color:var(--text-3); margin-bottom:4px;">Цвета</div>
                 <div class="cp-row"><span class="cp-label">Фон</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--bg"><input type="text" class="cp-hex" data-hex="--bg"></div></div>
                 <div class="cp-row"><span class="cp-label">Фон 2 (шапка, сайдбар)</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--bg-2"><input type="text" class="cp-hex" data-hex="--bg-2"></div></div>
                 <div class="cp-row"><span class="cp-label">Карточки</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--bg-card"><input type="text" class="cp-hex" data-hex="--bg-card"></div></div>
+                <div class="cp-row"><span class="cp-label">Карточки (hover)</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--bg-card-hover"><input type="text" class="cp-hex" data-hex="--bg-card-hover"></div></div>
+                <div class="cp-row"><span class="cp-label">Возвышенный фон</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--bg-elevated"><input type="text" class="cp-hex" data-hex="--bg-elevated"></div></div>
                 <div class="cp-row"><span class="cp-label">Текст основной</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--text-1"><input type="text" class="cp-hex" data-hex="--text-1"></div></div>
                 <div class="cp-row"><span class="cp-label">Текст вторичный</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--text-2"><input type="text" class="cp-hex" data-hex="--text-2"></div></div>
+                <div class="cp-row"><span class="cp-label">Текст третичный</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--text-3"><input type="text" class="cp-hex" data-hex="--text-3"></div></div>
                 <div class="cp-row"><span class="cp-label">Акцент</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--accent"><input type="text" class="cp-hex" data-hex="--accent"></div></div>
                 <div class="cp-row"><span class="cp-label">Успех (активное соединение)</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--success"><input type="text" class="cp-hex" data-hex="--success"></div></div>
+                <div class="cp-row"><span class="cp-label">Ошибка</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--error"><input type="text" class="cp-hex" data-hex="--error"></div></div>
+                <div class="cp-row"><span class="cp-label">Предупреждение</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--warning"><input type="text" class="cp-hex" data-hex="--warning"></div></div>
+                <div class="cp-row"><span class="cp-label">Тень кнопки</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--btn-shadow"><input type="text" class="cp-hex" data-hex="--btn-shadow"></div></div>
             </div>
             <div class="modal-footer">
                 <button class="btn-secondary" id="btn-theme-editor-reset">Сброс</button>

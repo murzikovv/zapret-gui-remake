@@ -18,10 +18,25 @@ const mainApp = el('main-app');
 
 // ─── Theme System ───
 const PRESET_VARS = {
-    dark:     { '--bg':'#0c0e14','--bg-2':'#131620','--bg-card':'#181b25','--bg-elevated':'#1f2335','--text-1':'#e8eaf0','--text-2':'#8b90a0','--text-3':'#525666','--accent':'#5b8def','--success':'#4ade80' },
-    midnight: { '--bg':'#0a0c1a','--bg-2':'#0f1228','--bg-card':'#141830','--bg-elevated':'#1e2440','--text-1':'#dde2f5','--text-2':'#7880a8','--text-3':'#424870','--accent':'#7c9ef7','--success':'#34d399' },
-    slate:    { '--bg':'#0f1117','--bg-2':'#161a23','--bg-card':'#1c2130','--bg-elevated':'#242c42','--text-1':'#e2e8f0','--text-2':'#94a3b8','--text-3':'#4a5568','--accent':'#60a5fa','--success':'#4ade80' },
-    mocha:    { '--bg':'#13100e','--bg-2':'#1c1714','--bg-card':'#231e1a','--bg-elevated':'#302820','--text-1':'#ede0d4','--text-2':'#9a8f86','--text-3':'#5a504a','--accent':'#e08060','--success':'#a6d189' },
+    dark:     { '--bg':'#0c0e14','--bg-2':'#131620','--bg-card':'#181b25','--bg-card-hover':'#1e2230','--bg-elevated':'#1f2335','--text-1':'#e8eaf0','--text-2':'#8b90a0','--text-3':'#525666','--accent':'#5b8def','--success':'#4ade80','--error':'#f87171','--warning':'#fbbf24','--btn-shadow':'rgba(0,0,0,0.45)' },
+    midnight: { '--bg':'#0a0c1a','--bg-2':'#0f1228','--bg-card':'#141830','--bg-card-hover':'#1a1f3c','--bg-elevated':'#1e2440','--text-1':'#dde2f5','--text-2':'#7880a8','--text-3':'#424870','--accent':'#7c9ef7','--success':'#34d399','--error':'#f87171','--warning':'#fbbf24','--btn-shadow':'rgba(0,0,0,0.45)' },
+    slate:    { '--bg':'#0f1117','--bg-2':'#161a23','--bg-card':'#1c2130','--bg-card-hover':'#222840','--bg-elevated':'#242c42','--text-1':'#e2e8f0','--text-2':'#94a3b8','--text-3':'#4a5568','--accent':'#60a5fa','--success':'#4ade80','--error':'#f87171','--warning':'#fbbf24','--btn-shadow':'rgba(0,0,0,0.45)' },
+    mocha:    { '--bg':'#13100e','--bg-2':'#1c1714','--bg-card':'#231e1a','--bg-card-hover':'#2b2420','--bg-elevated':'#302820','--text-1':'#ede0d4','--text-2':'#9a8f86','--text-3':'#5a504a','--accent':'#e08060','--success':'#a6d189','--error':'#e78284','--warning':'#e5c890','--btn-shadow':'rgba(0,0,0,0.45)' },
+    light:    { '--bg':'#f4f5f7','--bg-2':'#ffffff','--bg-card':'#ffffff','--bg-card-hover':'#f9fafb','--bg-elevated':'#ffffff','--text-1':'#111827','--text-2':'#4b5563','--text-3':'#9ca3af','--accent':'#3b82f6','--success':'#10b981','--error':'#ef4444','--warning':'#f59e0b','--btn-shadow':'rgba(0,0,0,0.1)' },
+};
+
+// ─── DOM Listeners (Safe Wrapper) ───
+const setOnClick = (id, fn) => {
+    const element = el(id);
+    if (element) element.onclick = fn;
+};
+const setOnInput = (id, fn) => {
+    const element = el(id);
+    if (element) element.oninput = fn;
+};
+const setOnChange = (id, fn) => {
+    const element = el(id);
+    if (element) element.onchange = fn;
 };
 
 function applyCustomVars(vars) {
@@ -31,8 +46,29 @@ function applyCustomVars(vars) {
         styleEl.id = 'custom-theme-style';
         document.head.appendChild(styleEl);
     }
+    const hasBorder    = vars['--border'];
+    const hasBorderStr = vars['--border-strong'];
     const lines = Object.entries(vars).map(([k,v]) => `  ${k}: ${v};`).join('\n');
-    styleEl.textContent = `[data-theme="custom"] {\n${lines}\n  --accent-dim: color-mix(in srgb, var(--accent) 12%, transparent);\n  --accent-border: color-mix(in srgb, var(--accent) 30%, transparent);\n  --success-dim: color-mix(in srgb, var(--success) 10%, transparent);\n  --bg-card-hover: color-mix(in srgb, var(--bg-card) 50%, var(--bg-elevated));\n  --border: rgba(255,255,255,0.07);\n  --border-strong: rgba(255,255,255,0.12);\n  --connect-ring: color-mix(in srgb, var(--accent) 15%, transparent);\n}`;
+    styleEl.textContent = `[data-theme="custom"] {\n${lines}\n  --accent-dim: color-mix(in srgb, var(--accent) 12%, transparent);\n  --accent-border: color-mix(in srgb, var(--accent) 30%, transparent);\n  --success-dim: color-mix(in srgb, var(--success) 10%, transparent);\n  --error-dim: color-mix(in srgb, var(--error) 10%, transparent);\n  --connect-ring: color-mix(in srgb, var(--accent) 15%, transparent);\n${!hasBorder ? '  --border: rgba(255,255,255,0.07);' : ''}\n${!hasBorderStr ? '  --border-strong: rgba(255,255,255,0.12);' : ''}\n}`;
+}
+
+// Returns the RGB triplet (no hash, comma-separated) for a given hex color string
+function hexToRgbTriple(hex) {
+    const c = hex.replace('#','');
+    const r = parseInt(c.substring(0,2),16);
+    const g = parseInt(c.substring(2,4),16);
+    const b = parseInt(c.substring(4,6),16);
+    return `${r},${g},${b}`;
+}
+
+// Sync --glass-rgb to current theme's --bg so glass tint matches
+function syncGlassRgb() {
+    if (!document.body.classList.contains('has-bg')) return;
+    const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    // --bg is a hex color in built-in themes; for custom it may need a fallback
+    if (/^#[0-9a-f]{6}$/i.test(bgColor)) {
+        document.documentElement.style.setProperty('--glass-rgb', hexToRgbTriple(bgColor));
+    }
 }
 
 function applyTheme(theme) {
@@ -50,7 +86,18 @@ function applyTheme(theme) {
         } else {
             openThemeEditor();
         }
+        // Restore custom background if saved
+        const savedBg   = localStorage.getItem('zapret-bg-image');
+        const savedBlur = parseInt(localStorage.getItem('zapret-bg-blur') || '0', 10);
+        if (savedBg) {
+            applyBackground(savedBg, savedBlur);
+        }
+    } else {
+        // Hide background for built-in themes
+        applyBackground(null, 0);
     }
+    // After theme applied, update glass tint (slight delay so CSS vars settle)
+    requestAnimationFrame(syncGlassRgb);
 }
 document.querySelectorAll('.theme-dot').forEach(dot => {
     if (dot.dataset.theme === 'custom') {
@@ -76,7 +123,7 @@ document.querySelectorAll('.theme-dot').forEach(dot => {
 applyTheme(localStorage.getItem('zapret-theme') || 'dark');
 
 // ─── Custom Theme Editor ───
-const EDITOR_VARS = ['--bg','--bg-2','--bg-card','--text-1','--text-2','--accent','--success'];
+const EDITOR_VARS = ['--bg','--bg-2','--bg-card','--bg-card-hover','--bg-elevated','--text-1','--text-2','--text-3','--accent','--success','--error','--warning','--btn-shadow'];
 
 function openThemeEditor() {
     // Load values into pickers
@@ -147,6 +194,139 @@ el('btn-theme-editor-reset').onclick = () => {
     log('Тема сброшена на Dark');
 };
 
+// ─── Background Image ───
+function applyBackground(dataUrl, blur) {
+    const bgEl = document.getElementById('app-bg');
+    if (!bgEl) return;
+    if (dataUrl) {
+        bgEl.style.backgroundImage = `url('${dataUrl}')`;
+        bgEl.style.filter = `blur(${blur || 0}px)`;
+        // Compensate for blur edge bleed
+        bgEl.style.inset = blur > 0 ? `-${blur * 2}px` : '0';
+        document.body.classList.add('has-bg');
+        requestAnimationFrame(syncGlassRgb);
+    } else {
+        bgEl.style.backgroundImage = '';
+        bgEl.style.filter = '';
+        bgEl.style.inset = '0';
+        document.body.classList.remove('has-bg');
+        document.documentElement.style.removeProperty('--glass-rgb');
+    }
+}
+
+// Load saved bg on boot (only if custom theme is active)
+(function() {
+    const savedBg     = localStorage.getItem('zapret-bg-image');
+    const savedBlur   = parseInt(localStorage.getItem('zapret-bg-blur') || '0', 10);
+    const savedUiBlur = parseInt(localStorage.getItem('zapret-ui-blur') || '16', 10);
+    const slider      = document.getElementById('bg-blur-slider');
+    const blurVal     = document.getElementById('bg-blur-value');
+    const uiSlider    = document.getElementById('ui-blur-slider');
+    const uiBlurVal   = document.getElementById('ui-blur-value');
+    const preview     = document.getElementById('bg-preview');
+    if (slider)    slider.value              = savedBlur;
+    if (blurVal)   blurVal.textContent       = savedBlur + 'px';
+    if (uiSlider)  uiSlider.value            = savedUiBlur;
+    if (uiBlurVal) uiBlurVal.textContent     = savedUiBlur + 'px';
+    document.documentElement.style.setProperty('--ui-blur', savedUiBlur + 'px');
+    // Only show background when on custom theme
+    const currentTheme = localStorage.getItem('zapret-theme') || 'dark';
+    if (savedBg && currentTheme === 'custom') {
+        applyBackground(savedBg, savedBlur);
+        if (preview) {
+            preview.style.backgroundImage = `url('${savedBg}')`;
+            preview.style.display = 'block';
+        }
+    } else if (preview && savedBg) {
+        // Show preview thumbnail even if bg not applied (not in custom theme)
+        preview.style.backgroundImage = `url('${savedBg}')`;
+        preview.style.display = 'block';
+    }
+})();
+
+setOnClick('btn-bg-upload', () => el('bg-file-input').click());
+
+setOnChange('bg-file-input', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        const dataUrl = ev.target.result;
+        const blur = parseInt(el('bg-blur-slider')?.value || '0', 10);
+        localStorage.setItem('zapret-bg-image', dataUrl);
+        applyBackground(dataUrl, blur);
+        const preview = el('bg-preview');
+        if (preview) {
+            preview.style.backgroundImage = `url('${dataUrl}')`;
+            preview.style.display = 'block';
+        }
+        log('✓ Фоновое изображение установлено');
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+});
+
+setOnClick('btn-bg-remove', () => {
+    localStorage.removeItem('zapret-bg-image');
+    localStorage.removeItem('zapret-bg-blur');
+    applyBackground(null, 0);
+    const preview = el('bg-preview');
+    if (preview) preview.style.display = 'none';
+    const slider = el('bg-blur-slider');
+    const blurVal = el('bg-blur-value');
+    if (slider) slider.value = 0;
+    if (blurVal) blurVal.textContent = '0px';
+    log('Фоновое изображение удалено');
+});
+
+setOnInput('bg-blur-slider', (e) => {
+    const blur = parseInt(e.target.value, 10);
+    const valEl = el('bg-blur-value');
+    if (valEl) valEl.textContent = blur + 'px';
+    localStorage.setItem('zapret-bg-blur', blur);
+    const savedBg = localStorage.getItem('zapret-bg-image');
+    if (savedBg) applyBackground(savedBg, blur);
+});
+
+setOnInput('ui-blur-slider', (e) => {
+    const blur = parseInt(e.target.value, 10);
+    const valEl = el('ui-blur-value');
+    if (valEl) valEl.textContent = blur + 'px';
+    localStorage.setItem('zapret-ui-blur', blur);
+    document.documentElement.style.setProperty('--ui-blur', blur + 'px');
+});
+
+// ─── Modals & Tools ───
+setOnClick('btn-version-manager', () => el('modal-versions').classList.remove('hidden'));
+setOnClick('setup-btn-download', () => el('modal-versions').classList.remove('hidden'));
+setOnClick('setup-btn-select', handleSelectFolder);
+setOnClick('btn-select-folder', handleSelectFolder);
+setOnClick('btn-domains-manager', openDomainsManager);
+setOnClick('btn-save-domains', async () => {
+    if (!currentActiveDomainTab) return;
+    const content = el('domains-textarea').value;
+    const ok = await api.saveList(currentFolder, currentActiveDomainTab, content);
+    if (ok) {
+        const btn = el('btn-save-domains');
+        btn.innerText = 'Сохранено!';
+        setTimeout(() => btn.innerText = 'Сохранить', 2000);
+    } else {
+        alert("Ошибка сохранения");
+    }
+});
+
+setOnClick('btn-autostart', async () => {
+    const isActive = el('btn-autostart').classList.contains('active');
+    await api.toggleAutostart({ enable: !isActive, minimizeOnStart: false });
+    checkAutostart();
+});
+
+setOnClick('btn-service-manager', async () => {
+    if (!currentFolder) return alert('Сначала выберите папку Zapret');
+    el('modal-service').classList.remove('hidden');
+    await refreshServiceModal();
+});
+
 // ─── Analytics ───
 let analyticsWs = null;
 
@@ -170,7 +350,7 @@ setTimeout(connectAnalytics, 2000);
 // ─── App Updates ───
 let latestAppUpdateUrl = null;
 
-el('btn-app-update').onclick = async () => {
+setOnClick('btn-app-update', async () => {
     console.log('[UI] Update button clicked');
     el('modal-app-update').classList.remove('hidden');
     el('update-version-label').textContent = 'Проверка обновлений...';
@@ -208,9 +388,9 @@ el('btn-app-update').onclick = async () => {
     } catch (e) {
         el('update-version-label').textContent = 'Сервер обновлений недоступен';
     }
-};
+});
 
-el('btn-app-download-now').onclick = async () => {
+setOnClick('btn-app-download-now', async () => {
     if (!latestAppUpdateUrl) return;
     
     el('btn-app-download-now').classList.add('hidden');
@@ -228,7 +408,7 @@ el('btn-app-download-now').onclick = async () => {
         el('btn-app-download-now').classList.remove('hidden');
         el('update-progress-wrap').classList.add('hidden');
     }
-};
+});
 
 // Initialization
 async function init() {
@@ -281,8 +461,7 @@ async function handleSelectFolder() {
         init();
     }
 }
-el('setup-btn-select').onclick = handleSelectFolder;
-el('btn-select-folder').onclick = handleSelectFolder;
+// Listeners moved to setOnClick safe wrapper sections
 
 // Strategies List
 async function loadStrategies() {
@@ -351,8 +530,8 @@ async function startSelectedStrategy() {
     }
 }
 
-el('btn-connect-main').onclick = startSelectedStrategy;
-el('btn-start-strategy').onclick = startSelectedStrategy;
+setOnClick('btn-connect-main', startSelectedStrategy);
+setOnClick('btn-start-strategy', startSelectedStrategy);
 
 // ─── Uptime Timer ───
 function startUptime() {
@@ -375,7 +554,7 @@ function stopUptime() {
     if (upEl) upEl.innerText = '';
 }
 
-el('btn-find-working').onclick = async () => {
+setOnClick('btn-find-working', async () => {
     if (!currentFolder || strategies.length === 0) {
         return alert('Нет доступных обходов в выбранной папке');
     }
@@ -419,7 +598,7 @@ el('btn-find-working').onclick = async () => {
     
     btn.disabled = false;
     btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Найти рабочий`;
-};
+});
 
 function setStrategyStatus(running, name) {
     isStrategyRunning = running;
@@ -587,7 +766,7 @@ window.installVersion = async (url, version) => {
 };
 
 // Domains Manager
-el('btn-domains-manager').onclick = openDomainsManager;
+// Listeners moved to setOnClick safe wrapper sections
 
 async function openDomainsManager() {
     el('modal-domains').classList.remove('hidden');
@@ -646,26 +825,10 @@ async function selectDomainTab(tabName) {
     }
 }
 
-el('btn-save-domains').onclick = async () => {
-    if (!currentActiveDomainTab) return;
-    const content = el('domains-textarea').value;
-    const ok = await api.saveList(currentFolder, currentActiveDomainTab, content);
-    if (ok) {
-        // Just visual feedback, the modal can stay open
-        const btn = el('btn-save-domains');
-        btn.innerText = 'Сохранено!';
-        setTimeout(() => btn.innerText = 'Сохранить', 2000);
-    } else {
-        alert("Ошибка сохранения");
-    }
-};
+// Listeners moved to setOnClick safe wrapper sections
 
 // Service Manager
-el('btn-service-manager').onclick = async () => {
-    if (!currentFolder) return alert('Сначала выберите папку Zapret');
-    el('modal-service').classList.remove('hidden');
-    await refreshServiceModal();
-};
+// Listeners moved to setOnClick safe wrapper sections
 
 async function refreshServiceModal() {
     const status = await api.checkServiceStatus(currentFolder);
@@ -683,27 +846,27 @@ async function refreshServiceModal() {
     el('select-cfg-ipset').value = config.IPSET_FILTER || 'none';
 }
 
-el('btn-service-install').onclick = async () => {
+setOnClick('btn-service-install', async () => {
     await api.installService(currentFolder);
     setTimeout(() => refreshServiceModal(), 2000);
-};
-el('btn-service-remove').onclick = async () => {
+});
+setOnClick('btn-service-remove', async () => {
     await api.removeService(currentFolder);
     setTimeout(() => refreshServiceModal(), 2000);
-};
+});
 
-el('select-cfg-game').onchange = (e) => {
+setOnChange('select-cfg-game', (e) => {
     api.updateServiceConfig(currentFolder, { GAME_FILTER: e.target.value });
     log('Game Filter: ' + e.target.value);
-};
-el('select-cfg-auto').onchange = (e) => {
+});
+setOnChange('select-cfg-auto', (e) => {
     api.updateServiceConfig(currentFolder, { AUTO_UPDATE: e.target.value });
     log('Автообновление: ' + e.target.value);
-};
-el('select-cfg-ipset').onchange = (e) => {
+});
+setOnChange('select-cfg-ipset', (e) => {
     api.updateServiceConfig(currentFolder, { IPSET_FILTER: e.target.value });
     log('IPSet Filter: ' + e.target.value);
-};
+});
 
 window.runMaintenance = async (cmd) => {
     log(`Запуск инструмента: ${cmd}...`);
@@ -726,11 +889,7 @@ async function checkAutostart() {
         ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Автозапуск: ВКЛ`
         : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Автозапуск`;
 }
-el('btn-autostart').onclick = async () => {
-    const isActive = el('btn-autostart').classList.contains('active');
-    await api.toggleAutostart({ enable: !isActive, minimizeOnStart: false });
-    checkAutostart();
-};
+// Listeners moved to setOnClick safe wrapper sections
 
 // Exit handling
 window.handleExit = (choice) => {
@@ -751,14 +910,14 @@ window.handleExit = (choice) => {
 };
 
 // Search strategy
-el('search-strategy').oninput = (e) => {
+setOnInput('search-strategy', (e) => {
     const term = e.target.value.toLowerCase();
     const items = el('strategy-list').children;
     for (let i=0; i<items.length; i++) {
         const text = items[i].innerText.toLowerCase();
         items[i].style.display = text.includes(term) ? 'flex' : 'none';
     }
-};
+});
 
 // Logs
 function log(msg) {
