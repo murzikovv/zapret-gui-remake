@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zapret GUI</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Titlebar -->
+    <div class="titlebar">
+        <div class="titlebar-left">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            Zapret GUI
+        </div>
+        <div class="titlebar-right">
+            <button class="btn-titlebar" id="btn-version-manager">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Версии
+            </button>
+            <div style="width:1px; height:14px; background:var(--border); margin:0 6px;"></div>
+            <button class="btn-titlebar" id="btn-app-update" style="color: var(--success); border-color: var(--success);">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+                Обновление
+            </button>
+            <div style="width:1px; height:14px; background:var(--border); margin:0 6px;"></div>
+            <!-- Theme Picker -->
+            <div class="theme-picker" title="Тема">
+                <div class="theme-dot t-dark active" data-theme="dark" title="Dark"></div>
+                <div class="theme-dot t-midnight" data-theme="midnight" title="Midnight"></div>
+                <div class="theme-dot t-slate" data-theme="slate" title="Slate"></div>
+                <div class="theme-dot t-mocha" data-theme="mocha" title="Mocha"></div>
+                <div class="theme-dot t-custom" data-theme="custom" title="Своя тема (RGB)"></div>
+            </div>
+            <div style="width:1px; height:14px; background:var(--border); margin:0 6px;"></div>
+            <button class="icon-btn" onclick="window.electronAPI.minimize()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <button class="icon-btn" onclick="window.electronAPI.maximize()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="1.5"/></svg>
+            </button>
+            <button class="icon-btn danger" onclick="window.electronAPI.close()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Setup Screen -->
+    <div class="setup-screen" id="setup-screen">
+        <div class="setup-logo">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+        </div>
+        <div style="text-align:center; display:flex; flex-direction:column; gap:6px; align-items:center;">
+            <div class="setup-title">Zapret GUI</div>
+            <div style="font-size:0.8rem; color:var(--text-2);">Выберите папку с Zapret или установите последнюю версию</div>
+        </div>
+        <div class="setup-actions">
+            <button class="btn w-full" id="setup-btn-select" style="padding:10px; font-size:0.85rem;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+                Выбрать папку
+            </button>
+            <button class="btn-secondary w-full" id="setup-btn-download" style="padding:10px; font-size:0.85rem;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Установить Zapret
+            </button>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div class="container" id="main-app" style="display:none;">
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="card fill">
+                <!-- Header -->
+                <div class="section-title">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="font-weight:600; font-size:0.85rem; color:var(--text-1);">Обходы</span>
+                        <span style="font-size:0.72rem; color:var(--text-3); background:rgba(255,255,255,0.06); padding:1px 6px; border-radius:10px;" id="strategy-count">0</span>
+                    </div>
+                    <button class="btn-small" id="btn-select-folder" title="Сменить папку Zapret">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                        </svg>
+                        Папка
+                    </button>
+                </div>
+
+                <!-- Search -->
+                <input type="text" class="input" placeholder="Поиск..." id="search-strategy" style="margin-bottom:6px;">
+
+                <!-- List -->
+                <div class="strategy-list" id="strategy-list"></div>
+
+                <!-- Actions -->
+                <div style="display:flex; flex-direction:column; gap:6px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+                    <button class="btn-tool w-full" id="btn-find-working">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        Найти рабочий
+                    </button>
+                    <button class="btn w-full" id="btn-start-strategy" disabled>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                        </svg>
+                        Запустить
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+
+            <!-- Top toolbar -->
+            <div class="card" style="padding:10px 14px; flex-direction:row; align-items:center; justify-content:space-between; flex-shrink:0;">
+                <div style="font-weight:600; font-size:0.88rem; color:var(--text-1);">Панель управления</div>
+                <div class="tools-row">
+                    <button class="btn-tool" id="btn-autostart">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                        </svg>
+                        Автозапуск
+                    </button>
+                    <button class="btn-tool" id="btn-domains-manager">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="2" y1="12" x2="22" y2="12"/>
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                        </svg>
+                        Домены
+                    </button>
+                    <button class="btn-tool" id="btn-service-manager" style="color:var(--accent); border-color:var(--accent-border);">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+                        </svg>
+                        Менеджер сервиса
+                    </button>
+                    <button id="btn-tray-start" style="display:none;"></button>
+                </div>
+            </div>
+
+            <!-- Status -->
+            <div class="card" style="flex-shrink:0;">
+                <div class="section-title">
+                    <h4>Статус</h4>
+                    <div style="font-size:0.75rem; color:var(--text-3);" id="status-uptime"></div>
+                </div>
+                <div class="status-panel" id="status-panel">
+                    <!-- Big connect button -->
+                    <div class="connect-btn-wrap">
+                        <button class="connect-btn" id="btn-connect-main">
+                            <!-- Power icon — idle -->
+                            <svg id="connect-icon-play" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+                                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+                                <line x1="12" y1="2" x2="12" y2="12"/>
+                            </svg>
+                            <!-- Power icon — running (filled) -->
+                            <svg id="connect-icon-stop" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" style="display:none;">
+                                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+                                <line x1="12" y1="2" x2="12" y2="12"/>
+                            </svg>
+                        </button>
+                        <div class="connect-label" id="connect-label">Подключить</div>
+                        <div class="connect-strategy-name" id="connect-strategy-name" style="display:none;"></div>
+                    </div>
+                    <!-- Pings row (shown when active) -->
+                    <div id="pings-grid" style="display:none; width:100%; padding:0 14px 14px;"></div>
+                </div>
+            </div>
+
+            <!-- Logs -->
+            <div class="card fill" style="padding:0; overflow:hidden;">
+                <div style="padding:10px 14px; border-bottom:1px solid var(--border); flex-shrink:0; display:flex; align-items:center; justify-content:space-between;">
+                    <h4>Журнал</h4>
+                    <button class="btn-small" onclick="document.getElementById('logs-container').innerHTML=''">Очистить</button>
+                </div>
+                <div class="logs" id="logs-container" style="border:none; border-radius:0; margin:0;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════ MODALS ═══ -->
+
+    <!-- Domains Modal -->
+    <div class="modal-overlay hidden" id="modal-domains">
+        <div class="modal-content" style="width:660px; height:82%;">
+            <div class="modal-header">
+                <div>
+                    <h3>Управление доменами</h3>
+                    <div style="font-size:0.75rem; color:var(--text-2); margin-top:3px;">По одному домену на строку · изменения применяются при перезапуске обхода</div>
+                </div>
+                <button class="icon-btn" onclick="document.getElementById('modal-domains').classList.add('hidden')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body flex" style="flex-direction:column; gap:10px;">
+                <div class="flex gap-2" id="domains-tabs" style="flex-wrap:wrap;"></div>
+                <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-3); padding:0 2px;">
+                    <span id="domains-file-hint"></span>
+                    <span id="domains-line-count"></span>
+                </div>
+                <textarea class="input mono" id="domains-textarea" style="flex:1; font-size:0.8rem;" placeholder="Введите домены..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="document.getElementById('modal-domains').classList.add('hidden')">Закрыть</button>
+                <button class="btn" id="btn-save-domains">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Version Manager Modal -->
+    <div class="modal-overlay hidden" id="modal-versions">
+        <div class="modal-content" style="width:580px; max-height:80vh;">
+            <div class="modal-header">
+                <div>
+                    <h3>Управление версиями</h3>
+                    <div style="font-size:0.75rem; color:var(--text-2); margin-top:3px;">Установка и активация версий Zapret</div>
+                </div>
+                <button class="icon-btn" onclick="document.getElementById('modal-versions').classList.add('hidden')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body flex" style="flex-direction:column; gap:14px;">
+                <!-- Download Progress -->
+                <div id="download-progress-container" class="hidden" style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px;">
+                    <div class="flex justify-between" style="font-size:0.8rem; margin-bottom:8px; color:var(--text-2);">
+                        <span id="download-status-text">Загрузка...</span>
+                        <span id="download-percent" style="color:var(--accent); font-weight:600;">0%</span>
+                    </div>
+                    <div class="progress-bg"><div class="progress-fill" id="download-bar" style="width:0%;"></div></div>
+                </div>
+
+                <div>
+                    <h4 style="margin-bottom:10px;">Установленные версии</h4>
+                    <div style="display:flex; flex-direction:column; gap:6px;" id="installed-versions-list"></div>
+                </div>
+
+                <div class="divider"></div>
+
+                <div>
+                    <h4 style="margin-bottom:10px;">Доступные релизы · GitHub</h4>
+                    <div style="display:flex; flex-direction:column; gap:6px;" id="github-versions-list">
+                        <div style="color:var(--text-3); font-size:0.82rem; padding:8px 0;">Загрузка...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Service Manager Modal -->
+    <div class="modal-overlay hidden" id="modal-service">
+        <div class="modal-content" style="width:580px;">
+            <div class="modal-header">
+                <div>
+                    <h3>Менеджер сервиса</h3>
+                    <div style="font-size:0.75rem; color:var(--text-2); margin-top:3px;">Управление Windows-сервисом и параметрами Zapret</div>
+                </div>
+                <button class="icon-btn" onclick="document.getElementById('modal-service').classList.add('hidden')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:14px;">
+
+                <!-- Status + Control -->
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                    <div class="card" style="background:var(--bg); gap:10px;">
+                        <h4>Windows-сервис</h4>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-size:0.82rem; color:var(--text-2);">Статус</span>
+                            <span id="service-status-text" style="font-weight:700; font-size:0.82rem;">НЕ УСТАНОВЛЕН</span>
+                        </div>
+                        <button class="btn w-full" id="btn-service-install" style="margin-top:4px;">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                            Открыть service.bat
+                        </button>
+                        <div style="font-size:0.72rem; color:var(--text-3); line-height:1.5;">
+                            Интерактивное меню для установки, запуска и удаления сервиса Zapret
+                        </div>
+                        <button id="btn-service-remove" style="display:none;"></button>
+                    </div>
+
+                    <!-- Settings -->
+                    <div class="card" style="background:var(--bg); gap:0;">
+                        <h4 style="margin-bottom:10px;">Настройки</h4>
+                        <div class="cfg-row">
+                            <span class="cfg-label">Game Filter</span>
+                            <select class="input" style="width:auto; font-size:0.78rem;" id="select-cfg-game">
+                                <option value="disabled">Выкл.</option>
+                                <option value="all">TCP + UDP</option>
+                                <option value="tcp">Только TCP</option>
+                                <option value="udp">Только UDP</option>
+                            </select>
+                        </div>
+                        <div class="cfg-row">
+                            <span class="cfg-label">IPSet Filter</span>
+                            <select class="input" style="width:auto; font-size:0.78rem;" id="select-cfg-ipset">
+                                <option value="none">None (Off)</option>
+                                <option value="any">Any (All)</option>
+                                <option value="loaded">Loaded</option>
+                            </select>
+                        </div>
+                        <div class="cfg-row">
+                            <span class="cfg-label">Автообновление</span>
+                            <select class="input" style="width:auto; font-size:0.78rem;" id="select-cfg-auto">
+                                <option value="disabled">Выкл.</option>
+                                <option value="enabled">Вкл.</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Maintenance -->
+                <div class="card" style="background:var(--bg);">
+                    <h4 style="margin-bottom:10px;">Обслуживание</h4>
+                    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px;">
+                        <button class="btn-tool" style="flex-direction:column; gap:4px; padding:10px 6px;" onclick="runMaintenance('ipset')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                            <span style="font-size:0.72rem;">IPSet List</span>
+                        </button>
+                        <button class="btn-tool" style="flex-direction:column; gap:4px; padding:10px 6px;" onclick="runMaintenance('hosts')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span style="font-size:0.72rem;">Hosts File</span>
+                        </button>
+                        <button class="btn-tool" style="flex-direction:column; gap:4px; padding:10px 6px;" onclick="runMaintenance('diag')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                            <span style="font-size:0.72rem;">Диагностика</span>
+                        </button>
+                        <button class="btn-tool" style="flex-direction:column; gap:4px; padding:10px 6px;" onclick="runMaintenance('test')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v11m0 0h10m-10 0H5m14 0v4a2 2 0 0 1-2 2M5 14v4a2 2 0 0 0 2 2h10"/></svg>
+                            <span style="font-size:0.72rem;">Тесты</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Exit Dialog -->
+    <div class="modal-overlay hidden" id="modal-exit">
+        <div class="modal-content" style="width:400px;">
+            <div class="modal-header">
+                <h3>Закрыть приложение?</h3>
+                <button class="icon-btn" onclick="document.getElementById('modal-exit').classList.add('hidden')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+                <p style="color:var(--text-2); line-height:1.6; margin:0; font-size:0.85rem;">
+                    Полностью закрыть приложение или свернуть в системный трей?
+                    Если обход активен — при сворачивании он продолжит работать.
+                </p>
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.82rem; color:var(--text-2);">
+                    <input type="checkbox" id="exit-remember-cb">
+                    Запомнить выбор
+                </label>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <button class="btn-secondary" onclick="handleExit('quit')">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                        Закрыть
+                    </button>
+                    <button class="btn" onclick="handleExit('minimize')">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        В трей
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Theme Editor Modal -->
+    <div class="modal-overlay hidden" id="modal-theme-editor">
+        <div class="modal-content" style="width:420px;">
+            <div class="modal-header">
+                <div>
+                    <h3>Редактор темы</h3>
+                    <div style="font-size:0.75rem; color:var(--text-2); margin-top:3px;">Настройте цвета · изменения применяются мгновенно</div>
+                </div>
+                <button class="icon-btn" onclick="document.getElementById('modal-theme-editor').classList.add('hidden')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:0;">
+                <!-- Quick presets -->
+                <div style="margin-bottom:14px;">
+                    <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; color:var(--text-3); margin-bottom:8px;">Быстрый старт</div>
+                    <div class="theme-presets">
+                        <button class="theme-preset-btn" onclick="loadEditorPreset('dark')">Dark</button>
+                        <button class="theme-preset-btn" onclick="loadEditorPreset('midnight')">Midnight</button>
+                        <button class="theme-preset-btn" onclick="loadEditorPreset('slate')">Slate</button>
+                        <button class="theme-preset-btn" onclick="loadEditorPreset('mocha')">Mocha</button>
+                    </div>
+                </div>
+                <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; color:var(--text-3); margin-bottom:4px;">Цвета</div>
+                <div class="cp-row"><span class="cp-label">Фон</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--bg"><input type="text" class="cp-hex" data-hex="--bg"></div></div>
+                <div class="cp-row"><span class="cp-label">Фон 2 (шапка, сайдбар)</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--bg-2"><input type="text" class="cp-hex" data-hex="--bg-2"></div></div>
+                <div class="cp-row"><span class="cp-label">Карточки</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--bg-card"><input type="text" class="cp-hex" data-hex="--bg-card"></div></div>
+                <div class="cp-row"><span class="cp-label">Текст основной</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--text-1"><input type="text" class="cp-hex" data-hex="--text-1"></div></div>
+                <div class="cp-row"><span class="cp-label">Текст вторичный</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--text-2"><input type="text" class="cp-hex" data-hex="--text-2"></div></div>
+                <div class="cp-row"><span class="cp-label">Акцент</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--accent"><input type="text" class="cp-hex" data-hex="--accent"></div></div>
+                <div class="cp-row"><span class="cp-label">Успех (активное соединение)</span><div class="cp-right"><input type="color" class="cp-swatch" data-var="--success"><input type="text" class="cp-hex" data-hex="--success"></div></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="btn-theme-editor-reset">Сброс</button>
+                <button class="btn" id="btn-theme-editor-save">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Update Modal -->
+    <div class="modal-overlay hidden" id="modal-app-update">
+        <div class="modal-content" style="width:400px;">
+            <div class="modal-header">
+                <div>
+                    <h3>Обновление программы</h3>
+                    <div style="font-size:0.75rem; color:var(--text-2); margin-top:3px;">Проверка новой версии</div>
+                </div>
+                <button class="icon-btn" onclick="document.getElementById('modal-app-update').classList.add('hidden')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+                <div id="update-status-content" style="text-align:center; padding:20px 0;">
+                    <div class="status-box-name" id="update-version-label">Проверка...</div>
+                </div>
+                
+                <div id="update-progress-wrap" class="hidden">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.8rem;">
+                        <span id="update-progress-text">Загрузка...</span>
+                        <span id="update-progress-percent">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="update-progress-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn hidden" id="btn-app-download-now">Скачать и обновить</button>
+                <button class="btn-secondary" onclick="document.getElementById('modal-app-update').classList.add('hidden')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

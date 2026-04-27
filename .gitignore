@@ -1,0 +1,15 @@
+node_modules/
+dist/
+release/
+*.log
+.DS_Store
+.env
+package-lock.json
+elevate.vbs
+zapret_versions/
+global_lists/
+autostart_settings.json
+*.exe
+!2_СБОРКА_В_EXE.bat
+!ЗАПУСК_СЕРВЕРА_В_ИНТЕРНЕТ.bat
+!RUN_GUI.bat
