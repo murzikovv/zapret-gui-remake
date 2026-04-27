@@ -5,7 +5,8 @@
 Удобный графический интерфейс для настройки обхода блокировок.
 
 ## 📸 Скриншоты
-![Zapret GUI Screenshot](banner.jpg)
+<img width="2000" height="1000" alt="banner" src="https://github.com/user-attachments/assets/5b10eded-4a63-4454-b124-5a6bba0c7e5f" />
+
 
 ## 📥 Скачать
 Нажмите на ссылку ниже, чтобы скачать последнюю версию установщика:
