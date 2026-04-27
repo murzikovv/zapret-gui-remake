@@ -5,7 +5,8 @@
 Удобный графический интерфейс для настройки обхода блокировок.
 
 ## 📸 Скриншоты
-![Uploading запрет.png…]()
+<img width="2000" height="1000" alt="запрет" src="https://github.com/user-attachments/assets/05137a56-aa6f-4235-be7d-6169da1d7852" />
+
 
 
 
