@@ -10,6 +10,8 @@
 
     <!-- App Background -->
     <div id="app-bg"></div>
+    <!-- Glass Overlay (color tint over background image) -->
+    <div id="glass-overlay"></div>
 
     <!-- Titlebar -->
     <div class="titlebar">
@@ -29,7 +31,7 @@
                 Версии
             </button>
             <div style="width:1px; height:14px; background:var(--border); margin:0 6px;"></div>
-            <button class="btn-titlebar" id="btn-app-update" style="color: var(--success); border-color: var(--success);">
+            <button class="btn-titlebar" id="btn-app-update">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                 </svg>
@@ -445,6 +447,40 @@
                             <span style="font-size:0.8rem; color:var(--text-2); white-space:nowrap;">Размытие UI</span>
                             <input type="range" id="ui-blur-slider" min="0" max="30" value="16" step="1" style="flex:1; accent-color:var(--accent);">
                             <span id="ui-blur-value" style="font-size:0.78rem; color:var(--text-2); min-width:28px; text-align:right;">16px</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Overlay tint -->
+                <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--border);">
+                    <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; color:var(--text-3); margin-bottom:8px;">Оверлей поверх фона</div>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="font-size:0.8rem; color:var(--text-2); white-space:nowrap;">Цвет тинта</span>
+                            <input type="color" id="overlay-color-picker" value="#000000" style="width:36px; height:26px; border-radius:var(--radius-sm); border:1px solid var(--border); background:transparent; cursor:pointer; padding:2px; flex-shrink:0;">
+                            <input type="text" id="overlay-color-hex" value="#000000" style="width:72px; background:var(--bg); border:1px solid var(--border); color:var(--text-1); padding:3px 6px; border-radius:var(--radius-sm); font-family:monospace; font-size:0.75rem; outline:none;">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="font-size:0.8rem; color:var(--text-2); white-space:nowrap;">Затемнение</span>
+                            <input type="range" id="overlay-opacity-slider" min="0" max="90" value="0" step="1" style="flex:1; accent-color:var(--accent);">
+                            <span id="overlay-opacity-value" style="font-size:0.78rem; color:var(--text-2); min-width:28px; text-align:right;">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Glass Tint (Card specific) -->
+                <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--border);">
+                    <div style="font-size:0.68rem; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; color:var(--text-3); margin-bottom:8px;">Цвет плашек (стекло)</div>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="font-size:0.8rem; color:var(--text-2); white-space:nowrap;">Тинт карточек</span>
+                            <input type="color" id="glass-color-picker" value="#000000" style="width:36px; height:26px; border-radius:var(--radius-sm); border:1px solid var(--border); background:transparent; cursor:pointer; padding:2px; flex-shrink:0;">
+                            <input type="text" id="glass-color-hex" value="#000000" style="width:72px; background:var(--bg); border:1px solid var(--border); color:var(--text-1); padding:3px 6px; border-radius:var(--radius-sm); font-family:monospace; font-size:0.75rem; outline:none;">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="font-size:0.8rem; color:var(--text-2); white-space:nowrap;">Насыщенность</span>
+                            <input type="range" id="glass-opacity-slider" min="0" max="100" value="20" step="1" style="flex:1; accent-color:var(--accent);">
+                            <span id="glass-opacity-value" style="font-size:0.78rem; color:var(--text-2); min-width:28px; text-align:right;">20%</span>
                         </div>
                     </div>
                 </div>

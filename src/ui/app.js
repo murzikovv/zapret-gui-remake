@@ -204,30 +204,85 @@ function applyBackground(dataUrl, blur) {
         // Compensate for blur edge bleed
         bgEl.style.inset = blur > 0 ? `-${blur * 2}px` : '0';
         document.body.classList.add('has-bg');
+        // Re-apply overlay now that background is active
+        const savedColor   = localStorage.getItem('zapret-overlay-color') || '#000000';
+        const savedOpacity = parseInt(localStorage.getItem('zapret-overlay-opacity') || '0', 10);
+        applyOverlay(savedColor, savedOpacity);
+
+        const savedGlassColor = localStorage.getItem('zapret-glass-color') || '#000000';
+        const savedGlassOpac  = parseInt(localStorage.getItem('zapret-glass-opacity') || '20', 10);
+        applyGlassTint(savedGlassColor, savedGlassOpac);
+
         requestAnimationFrame(syncGlassRgb);
     } else {
         bgEl.style.backgroundImage = '';
         bgEl.style.filter = '';
         bgEl.style.inset = '0';
         document.body.classList.remove('has-bg');
+        applyOverlay('#000000', 0);
         document.documentElement.style.removeProperty('--glass-rgb');
+    }
+}
+
+// ─── Glass Overlay ───
+function applyOverlay(color, opacity) {
+    const overlayEl = document.getElementById('glass-overlay');
+    if (!overlayEl) return;
+    if (opacity > 0 && document.body.classList.contains('has-bg')) {
+        // Convert hex color to rgba with given opacity (0-90 → 0.0-0.9)
+        const r = parseInt(color.slice(1,3), 16);
+        const g = parseInt(color.slice(3,5), 16);
+        const b = parseInt(color.slice(5,7), 16);
+        overlayEl.style.background = `rgba(${r},${g},${b},${(opacity / 100).toFixed(2)})`;
+    } else {
+        overlayEl.style.background = 'transparent';
+    }
+}
+
+function applyGlassTint(color, opacity) {
+    if (opacity >= 0) {
+        const r = parseInt(color.slice(1,3), 16);
+        const g = parseInt(color.slice(3,5), 16);
+        const b = parseInt(color.slice(5,7), 16);
+        const rgba = `rgba(${r},${g},${b},${(opacity / 100).toFixed(2)})`;
+        document.documentElement.style.setProperty('--glass-bg', rgba);
     }
 }
 
 // Load saved bg on boot (only if custom theme is active)
 (function() {
-    const savedBg     = localStorage.getItem('zapret-bg-image');
-    const savedBlur   = parseInt(localStorage.getItem('zapret-bg-blur') || '0', 10);
-    const savedUiBlur = parseInt(localStorage.getItem('zapret-ui-blur') || '16', 10);
-    const slider      = document.getElementById('bg-blur-slider');
-    const blurVal     = document.getElementById('bg-blur-value');
-    const uiSlider    = document.getElementById('ui-blur-slider');
-    const uiBlurVal   = document.getElementById('ui-blur-value');
-    const preview     = document.getElementById('bg-preview');
+    const savedBg       = localStorage.getItem('zapret-bg-image');
+    const savedBlur     = parseInt(localStorage.getItem('zapret-bg-blur') || '0', 10);
+    const savedUiBlur   = parseInt(localStorage.getItem('zapret-ui-blur') || '16', 10);
+    const savedOvColor  = localStorage.getItem('zapret-overlay-color') || '#000000';
+    const savedOvOpac   = parseInt(localStorage.getItem('zapret-overlay-opacity') || '0', 10);
+    const savedGlassColor = localStorage.getItem('zapret-glass-color') || '#000000';
+    const savedGlassOpac  = parseInt(localStorage.getItem('zapret-glass-opacity') || '20', 10);
+    const slider        = document.getElementById('bg-blur-slider');
+    const blurVal       = document.getElementById('bg-blur-value');
+    const uiSlider      = document.getElementById('ui-blur-slider');
+    const uiBlurVal     = document.getElementById('ui-blur-value');
+    const preview       = document.getElementById('bg-preview');
+    const ovColorPicker = document.getElementById('overlay-color-picker');
+    const ovColorHex    = document.getElementById('overlay-color-hex');
+    const ovSlider      = document.getElementById('overlay-opacity-slider');
+    const ovVal         = document.getElementById('overlay-opacity-value');
+    const glassColorPicker = document.getElementById('glass-color-picker');
+    const glassColorHex    = document.getElementById('glass-color-hex');
+    const glassSlider      = document.getElementById('glass-opacity-slider');
+    const glassVal         = document.getElementById('glass-opacity-value');
     if (slider)    slider.value              = savedBlur;
     if (blurVal)   blurVal.textContent       = savedBlur + 'px';
     if (uiSlider)  uiSlider.value            = savedUiBlur;
     if (uiBlurVal) uiBlurVal.textContent     = savedUiBlur + 'px';
+    if (ovColorPicker) ovColorPicker.value   = savedOvColor;
+    if (ovColorHex)    ovColorHex.value      = savedOvColor;
+    if (ovSlider)  ovSlider.value            = savedOvOpac;
+    if (ovVal)     ovVal.textContent         = savedOvOpac + '%';
+    if (glassColorPicker) glassColorPicker.value = savedGlassColor;
+    if (glassColorHex)    glassColorHex.value    = savedGlassColor;
+    if (glassSlider)      glassSlider.value      = savedGlassOpac;
+    if (glassVal)         glassVal.textContent   = savedGlassOpac + '%';
     document.documentElement.style.setProperty('--ui-blur', savedUiBlur + 'px');
     // Only show background when on custom theme
     const currentTheme = localStorage.getItem('zapret-theme') || 'dark';
@@ -269,6 +324,10 @@ setOnChange('bg-file-input', (e) => {
 setOnClick('btn-bg-remove', () => {
     localStorage.removeItem('zapret-bg-image');
     localStorage.removeItem('zapret-bg-blur');
+    localStorage.removeItem('zapret-overlay-color');
+    localStorage.removeItem('zapret-overlay-opacity');
+    localStorage.removeItem('zapret-glass-color');
+    localStorage.removeItem('zapret-glass-opacity');
     applyBackground(null, 0);
     const preview = el('bg-preview');
     if (preview) preview.style.display = 'none';
@@ -276,6 +335,24 @@ setOnClick('btn-bg-remove', () => {
     const blurVal = el('bg-blur-value');
     if (slider) slider.value = 0;
     if (blurVal) blurVal.textContent = '0px';
+    // Reset overlay controls
+    const ovPicker = el('overlay-color-picker');
+    const ovHex    = el('overlay-color-hex');
+    const ovSlider = el('overlay-opacity-slider');
+    const ovVal    = el('overlay-opacity-value');
+    if (ovPicker) ovPicker.value = '#000000';
+    if (ovHex)    ovHex.value   = '#000000';
+    if (ovSlider) ovSlider.value = 0;
+    if (ovVal)    ovVal.textContent = '0%';
+    // Reset glass controls
+    const gPicker = el('glass-color-picker');
+    const gHex    = el('glass-color-hex');
+    const gSlider = el('glass-opacity-slider');
+    const gVal    = el('glass-opacity-value');
+    if (gPicker) gPicker.value = '#000000';
+    if (gHex)    gHex.value   = '#000000';
+    if (gSlider) gSlider.value = 20;
+    if (gVal)    gVal.textContent = '20%';
     log('Фоновое изображение удалено');
 });
 
@@ -294,6 +371,63 @@ setOnInput('ui-blur-slider', (e) => {
     if (valEl) valEl.textContent = blur + 'px';
     localStorage.setItem('zapret-ui-blur', blur);
     document.documentElement.style.setProperty('--ui-blur', blur + 'px');
+});
+
+// ─── Overlay Tint Controls ───
+setOnInput('overlay-color-picker', (e) => {
+    const color = e.target.value;
+    const hexEl = el('overlay-color-hex');
+    if (hexEl) hexEl.value = color;
+    localStorage.setItem('zapret-overlay-color', color);
+    const opacity = parseInt(el('overlay-opacity-slider')?.value || '0', 10);
+    applyOverlay(color, opacity);
+});
+
+setOnInput('overlay-color-hex', (e) => {
+    const val = e.target.value.trim();
+    if (/^#[0-9a-f]{6}$/i.test(val)) {
+        const picker = el('overlay-color-picker');
+        if (picker) picker.value = val;
+        localStorage.setItem('zapret-overlay-color', val);
+        const opacity = parseInt(el('overlay-opacity-slider')?.value || '0', 10);
+        applyOverlay(val, opacity);
+    }
+});
+
+setOnInput('overlay-opacity-slider', (e) => {
+    const opacity = parseInt(e.target.value, 10);
+    const valEl = el('overlay-opacity-value');
+    if (valEl) valEl.textContent = opacity + '%';
+    localStorage.setItem('zapret-overlay-opacity', opacity);
+    const color = el('overlay-color-picker')?.value || '#000000';
+    applyOverlay(color, opacity);
+});
+
+// ─── Glass Tint Controls ───
+setOnInput('glass-color-picker', (e) => {
+    const color = e.target.value;
+    if (el('glass-color-hex')) el('glass-color-hex').value = color;
+    localStorage.setItem('zapret-glass-color', color);
+    const opacity = parseInt(el('glass-opacity-slider')?.value || '20', 10);
+    applyGlassTint(color, opacity);
+});
+
+setOnInput('glass-color-hex', (e) => {
+    const val = e.target.value.trim();
+    if (/^#[0-9a-f]{6}$/i.test(val)) {
+        if (el('glass-color-picker')) el('glass-color-picker').value = val;
+        localStorage.setItem('zapret-glass-color', val);
+        const opacity = parseInt(el('glass-opacity-slider')?.value || '20', 10);
+        applyGlassTint(val, opacity);
+    }
+});
+
+setOnInput('glass-opacity-slider', (e) => {
+    const opacity = parseInt(e.target.value, 10);
+    if (el('glass-opacity-value')) el('glass-opacity-value').textContent = opacity + '%';
+    localStorage.setItem('zapret-glass-opacity', opacity);
+    const color = el('glass-color-picker')?.value || '#000000';
+    applyGlassTint(color, opacity);
 });
 
 // ─── Modals & Tools ───
@@ -352,6 +486,9 @@ let latestAppUpdateUrl = null;
 
 setOnClick('btn-app-update', async () => {
     console.log('[UI] Update button clicked');
+    // Remove pulse once user opens the modal
+    el('btn-app-update').classList.remove('has-update');
+
     el('modal-app-update').classList.remove('hidden');
     el('update-version-label').textContent = 'Проверка обновлений...';
     el('update-progress-wrap').classList.add('hidden');
@@ -389,6 +526,20 @@ setOnClick('btn-app-update', async () => {
         el('update-version-label').textContent = 'Сервер обновлений недоступен';
     }
 });
+
+// Silent background update check — only lights up button if update exists
+async function checkAppUpdateSilent() {
+    try {
+        const res = await api.checkAppUpdate();
+        if (res && res.success && res.hasUpdate) {
+            el('btn-app-update').classList.add('has-update');
+        }
+    } catch (e) {
+        // Silently ignore — no network, no problem
+    }
+}
+// Run after a short delay so the app loads first
+setTimeout(checkAppUpdateSilent, 3000);
 
 setOnClick('btn-app-download-now', async () => {
     if (!latestAppUpdateUrl) return;

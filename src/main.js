@@ -5,7 +5,7 @@ const net = require('net');
 const { spawn, exec, execSync } = require('child_process');
 const https = require('https');
 
-const APP_VERSION = '1.1.6';
+const APP_VERSION = '1.1.8';
 const UPDATE_URL = 'https://raw.githubusercontent.com/murzikovv/zapret-gui-remake/main/version.json';
 
 ipcMain.handle('check-app-update', async () => {
@@ -559,7 +559,7 @@ ipcMain.handle('toggle-autostart', (event, { enable, minimizeOnStart }) => {
     app.setLoginItemSettings({
         openAtLogin: enable,
         path: process.execPath,
-        args: args.length > 0 ? ['--process-start-args', args.map(a => `"${a}"`).join(' ')] : []
+        args: args
     });
 
     // Store localized settings

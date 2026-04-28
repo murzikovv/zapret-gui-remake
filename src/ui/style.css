@@ -148,6 +148,18 @@ body {
   pointer-events: none;
 }
 
+#glass-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: transparent;
+  transition: background 0.3s;
+}
+body.has-bg #glass-overlay {
+  /* background is set inline via JS */
+}
+
 /* ─── Scrollbar ─── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -235,6 +247,16 @@ button:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
   color: var(--text-2); height: 24px;
 }
 .btn-titlebar:hover { background: rgba(255,255,255,0.08); color: var(--text-1); }
+.btn-titlebar.has-update {
+  color: var(--success);
+  border-color: var(--success);
+  animation: update-pulse 2.5s ease-in-out infinite;
+}
+.btn-titlebar.has-update:hover { background: var(--success-dim); }
+@keyframes update-pulse {
+  0%,100% { box-shadow: none; }
+  50%      { box-shadow: 0 0 8px rgba(74,222,128,0.35); }
+}
 
 /* Tool chip */
 .btn-tool {
@@ -602,7 +624,7 @@ body.has-bg .titlebar {
 }
 
 body.has-bg .card {
-  background: rgba(0,0,0,0.20);
+  background: var(--glass-bg, rgba(0,0,0,0.20));
   backdrop-filter: blur(var(--ui-blur)) saturate(1.5);
   -webkit-backdrop-filter: blur(var(--ui-blur)) saturate(1.5);
   border-color: rgba(255,255,255,0.1);
@@ -630,14 +652,14 @@ body.has-bg .strategy-item.selected {
 }
 
 body.has-bg .logs {
-  background: rgba(0,0,0,0.18);
+  background: var(--glass-bg, rgba(0,0,0,0.18));
   backdrop-filter: blur(var(--ui-blur));
   -webkit-backdrop-filter: blur(var(--ui-blur));
   border-color: rgba(255,255,255,0.08);
 }
 
 body.has-bg .status-panel {
-  background: rgba(0,0,0,0.15);
+  background: var(--glass-bg, rgba(0,0,0,0.15));
   backdrop-filter: blur(var(--ui-blur));
   -webkit-backdrop-filter: blur(var(--ui-blur));
   border-color: rgba(255,255,255,0.08);
