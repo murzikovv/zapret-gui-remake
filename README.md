@@ -2,10 +2,12 @@
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue) ![OS](https://img.shields.io/badge/os-Windows-green) ![License](https://img.shields.io/badge/license-ISC-orange)
 
-Удобный графический интерфейс для настройки обхода блокировок.
+Удобное приложение с графическим интерфейсом для быстрого обхода блокировок.(НЕ ВПН)
 
 ## 📸 Скриншоты
-<img width="2000" height="1000" alt="запрет" src="https://github.com/user-attachments/assets/478c4571-b3c6-4dea-b117-dc138cfcf943" />
+<img width="2000" height="1000" alt="запрет" src="https://github.com/user-attachments/assets/05137a56-aa6f-4235-be7d-6169da1d7852" />
+
+
 
 
 
