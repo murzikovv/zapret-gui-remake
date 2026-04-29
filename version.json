@@ -1,5 +1,5 @@
 {
-  "version": "1.2",
+  "version": "1.2.1",
   "url": "https://github.com/murzikovv/zapret-gui-remake/releases/latest/download/ZapretGUISetup.exe",
-  "changelog": "Добавлена возможность ставить GIf на фон, исправлена проблема с отображением вечно доступного обновления"
+  "changelog": "Дизайн, отображение обновлений, авто-запуск"
 }

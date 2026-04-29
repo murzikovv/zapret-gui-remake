@@ -5,7 +5,7 @@ const net = require('net');
 const { spawn, exec, execSync } = require('child_process');
 const https = require('https');
 
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.2.1';
 const UPDATE_URL = 'https://raw.githubusercontent.com/murzikovv/zapret-gui-remake/main/version.json';
 
 ipcMain.handle('check-app-update', async () => {
@@ -554,12 +554,19 @@ ipcMain.handle('save-file', async (event, { filePath, content }) => {
 
 // Autostart
 ipcMain.handle('toggle-autostart', (event, { enable, minimizeOnStart }) => {
-    const args = [];
+    let exePath = process.execPath;
+    let args = [];
+    
+    // Если приложение запущено из исходников (npm start), передаем путь к проекту
+    if (!app.isPackaged) {
+        args.push(app.getAppPath());
+    }
+    
     if (minimizeOnStart) args.push('--hidden');
 
     app.setLoginItemSettings({
         openAtLogin: enable,
-        path: process.execPath,
+        path: exePath,
         args: args
     });
 

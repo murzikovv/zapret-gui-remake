@@ -31,7 +31,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Zapret GUI"
+      "shortcutName": "Zapret GUI",
+      "include": "build/installer.nsh"
     }
   }
 }

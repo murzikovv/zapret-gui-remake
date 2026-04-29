@@ -617,16 +617,31 @@ setOnClick('btn-service-manager', async () => {
 
 // ─── Analytics ───
 let analyticsWs = null;
+let analyticsPingInterval = null;
 
 function connectAnalytics() {
     const url = 'wss://zapret-admin-murzikov-stats.loca.lt';
-    if (analyticsWs) analyticsWs.close();
+    if (analyticsWs) {
+        analyticsWs.close();
+    }
+    if (analyticsPingInterval) {
+        clearInterval(analyticsPingInterval);
+    }
     
     try {
         analyticsWs = new WebSocket(url);
-        analyticsWs.onopen = () => console.log('[Analytics] Connected');
+        analyticsWs.onopen = () => {
+            console.log('[Analytics] Connected');
+            // Ping every 20 seconds to keep localtunnel connection alive
+            analyticsPingInterval = setInterval(() => {
+                if (analyticsWs.readyState === WebSocket.OPEN) {
+                    analyticsWs.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 20000);
+        };
         analyticsWs.onerror = () => {};
         analyticsWs.onclose = () => {
+            if (analyticsPingInterval) clearInterval(analyticsPingInterval);
             setTimeout(connectAnalytics, 15000); // Reconnect every 15s
         };
     } catch (e) {

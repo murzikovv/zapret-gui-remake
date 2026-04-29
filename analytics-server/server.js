@@ -29,6 +29,8 @@ wss.on('connection', (ws) => {
                 } else {
                     ws.send(JSON.stringify({ type: 'error', message: 'Wrong password' }));
                 }
+            } else if (data.type === 'ping') {
+                ws.send(JSON.stringify({ type: 'pong' }));
             }
         } catch (e) {
             // ignore parsing errors
