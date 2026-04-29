@@ -136,6 +136,7 @@ function openThemeEditor() {
         if (swatch) swatch.value = val;
         if (hexEl)  hexEl.value  = val;
     });
+    loadCustomTemplates();
     el('modal-theme-editor').classList.remove('hidden');
 }
 window.loadEditorPreset = (preset) => {
@@ -193,6 +194,159 @@ el('btn-theme-editor-reset').onclick = () => {
     el('modal-theme-editor').classList.add('hidden');
     log('Тема сброшена на Dark');
 };
+
+// ─── Custom Theme Templates ───
+function loadCustomTemplates() {
+    const listEl = el('theme-templates-list');
+    if (!listEl) return;
+    const saved = JSON.parse(localStorage.getItem('zapret-theme-templates') || '[]');
+    listEl.innerHTML = '';
+    
+    if (saved.length === 0) {
+        listEl.innerHTML = '<div style="font-size:0.75rem; color:var(--text-3); width:100%;">Нет сохраненных шаблонов</div>';
+        return;
+    }
+    
+    saved.forEach((tpl, idx) => {
+        const wrap = document.createElement('div');
+        wrap.style.display = 'flex';
+        wrap.style.alignItems = 'stretch';
+        wrap.style.background = 'var(--bg-card)';
+        wrap.style.border = '1px solid var(--border)';
+        wrap.style.borderRadius = 'var(--radius-sm)';
+        wrap.style.overflow = 'hidden';
+        
+        const btnLoad = document.createElement('button');
+        btnLoad.className = 'theme-preset-btn';
+        btnLoad.style.border = 'none';
+        btnLoad.style.borderRadius = '0';
+        btnLoad.style.margin = '0';
+        btnLoad.style.background = 'transparent';
+        btnLoad.textContent = tpl.name;
+        btnLoad.onclick = () => applyThemeTemplate(tpl);
+        
+        const btnDel = document.createElement('button');
+        btnDel.className = 'icon-btn';
+        btnDel.style.borderRadius = '0';
+        btnDel.style.borderLeft = '1px solid var(--border)';
+        btnDel.style.padding = '0 6px';
+        btnDel.style.color = 'var(--error)';
+        btnDel.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
+        btnDel.onclick = () => {
+            if (confirm(`Удалить шаблон "${tpl.name}"?`)) {
+                saved.splice(idx, 1);
+                localStorage.setItem('zapret-theme-templates', JSON.stringify(saved));
+                loadCustomTemplates();
+            }
+        };
+        
+        wrap.appendChild(btnLoad);
+        wrap.appendChild(btnDel);
+        listEl.appendChild(wrap);
+    });
+}
+
+setOnClick('btn-theme-template-save', () => {
+    const nameInput = el('theme-template-name');
+    if (!nameInput) return;
+    const name = nameInput.value.trim();
+    if (!name) return alert('Введите название шаблона');
+    
+    const template = {
+        name: name,
+        vars: getEditorVars(),
+        bgImage: localStorage.getItem('zapret-bg-image') || null,
+        bgBlur: localStorage.getItem('zapret-bg-blur') || '0',
+        uiBlur: localStorage.getItem('zapret-ui-blur') || '16',
+        overlayColor: localStorage.getItem('zapret-overlay-color') || '#000000',
+        overlayOpacity: localStorage.getItem('zapret-overlay-opacity') || '0',
+        glassColor: localStorage.getItem('zapret-glass-color') || '#000000',
+        glassOpacity: localStorage.getItem('zapret-glass-opacity') || '20'
+    };
+    
+    const saved = JSON.parse(localStorage.getItem('zapret-theme-templates') || '[]');
+    const existingIdx = saved.findIndex(t => t.name === name);
+    if (existingIdx >= 0) {
+        if(confirm(`Шаблон "${name}" уже существует. Перезаписать?`)) {
+            saved[existingIdx] = template;
+        } else {
+            return;
+        }
+    } else {
+        saved.push(template);
+    }
+    
+    localStorage.setItem('zapret-theme-templates', JSON.stringify(saved));
+    nameInput.value = '';
+    loadCustomTemplates();
+});
+
+function applyThemeTemplate(tpl) {
+    localStorage.setItem('zapret-custom-vars', JSON.stringify(tpl.vars));
+    
+    if (tpl.bgImage) localStorage.setItem('zapret-bg-image', tpl.bgImage);
+    else localStorage.removeItem('zapret-bg-image');
+    
+    localStorage.setItem('zapret-bg-blur', tpl.bgBlur);
+    localStorage.setItem('zapret-ui-blur', tpl.uiBlur);
+    localStorage.setItem('zapret-overlay-color', tpl.overlayColor);
+    localStorage.setItem('zapret-overlay-opacity', tpl.overlayOpacity);
+    localStorage.setItem('zapret-glass-color', tpl.glassColor);
+    localStorage.setItem('zapret-glass-opacity', tpl.glassOpacity);
+    
+    openThemeEditor();
+    
+    if (tpl.bgImage) applyBackground(tpl.bgImage, parseInt(tpl.bgBlur, 10));
+    else applyBackground(null, 0);
+    
+    document.documentElement.style.setProperty('--ui-blur', tpl.uiBlur + 'px');
+    
+    const sliderBgBlur = el('bg-blur-slider');
+    const valBgBlur = el('bg-blur-value');
+    if(sliderBgBlur) sliderBgBlur.value = tpl.bgBlur;
+    if(valBgBlur) valBgBlur.textContent = tpl.bgBlur + 'px';
+    
+    const sliderUiBlur = el('ui-blur-slider');
+    const valUiBlur = el('ui-blur-value');
+    if(sliderUiBlur) sliderUiBlur.value = tpl.uiBlur;
+    if(valUiBlur) valUiBlur.textContent = tpl.uiBlur + 'px';
+    
+    const preview = el('bg-preview');
+    if (preview) {
+        if (tpl.bgImage) {
+            preview.style.backgroundImage = `url('${tpl.bgImage}')`;
+            preview.style.display = 'block';
+        } else {
+            preview.style.display = 'none';
+        }
+    }
+
+    // Refresh overlay inputs
+    const ovPicker = el('overlay-color-picker');
+    const ovHex = el('overlay-color-hex');
+    const ovSlider = el('overlay-opacity-slider');
+    const ovVal = el('overlay-opacity-value');
+    if(ovPicker) ovPicker.value = tpl.overlayColor;
+    if(ovHex) ovHex.value = tpl.overlayColor;
+    if(ovSlider) ovSlider.value = tpl.overlayOpacity;
+    if(ovVal) ovVal.textContent = tpl.overlayOpacity + '%';
+    
+    // Refresh glass inputs
+    const glPicker = el('glass-color-picker');
+    const glHex = el('glass-color-hex');
+    const glSlider = el('glass-opacity-slider');
+    const glVal = el('glass-opacity-value');
+    if(glPicker) glPicker.value = tpl.glassColor;
+    if(glHex) glHex.value = tpl.glassColor;
+    if(glSlider) glSlider.value = tpl.glassOpacity;
+    if(glVal) glVal.textContent = tpl.glassOpacity + '%';
+    
+    applyOverlay(tpl.overlayColor, parseInt(tpl.overlayOpacity, 10));
+    applyGlassTint(tpl.glassColor, parseInt(tpl.glassOpacity, 10));
+    
+    applyCustomVars(tpl.vars);
+    applyTheme('custom');
+}
 
 // ─── Background Image ───
 function applyBackground(dataUrl, blur) {
