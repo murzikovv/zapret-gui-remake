@@ -46,7 +46,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateHosts: (folderPath) => ipcRenderer.invoke('update-hosts', folderPath),
     runDiagnostics: (folderPath) => ipcRenderer.invoke('run-diagnostics', folderPath),
     runTests: (folderPath) => ipcRenderer.invoke('run-tests', folderPath),
-    getPings: () => ipcRenderer.invoke('get-pings'),
+    getPings: (targets) => ipcRenderer.invoke('get-pings', targets),
     setTrayTheme: (theme) => ipcRenderer.send('set-tray-theme', theme),
 
     // App Updates

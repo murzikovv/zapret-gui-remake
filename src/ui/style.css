@@ -517,15 +517,98 @@ select.input { padding: 5px 8px; cursor: pointer; appearance: auto; }
 }
 
 .status-grid {
-  display: grid; grid-template-columns: repeat(3,1fr);
-  gap: 8px; width: 100%;
+  display: grid;
+  /* columns set dynamically in JS via inline style */
+  gap: 7px; width: 100%;
 }
 .status-box {
   background: rgba(255,255,255,0.03); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 8px 6px; text-align: center;
+  position: relative;
+  animation: ping-box-in 0.25s cubic-bezier(.34,1.56,.64,1) both;
 }
-.status-box-name { font-size:0.62rem; color:var(--text-3); text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px; }
+@keyframes ping-box-in {
+  from { opacity:0; transform: scale(0.7); }
+  to   { opacity:1; transform: scale(1); }
+}
+.status-box.removing {
+  animation: ping-box-out 0.2s ease forwards;
+}
+@keyframes ping-box-out {
+  to { opacity:0; transform: scale(0.6); }
+}
+/* Delete button on each ping box */
+.status-box-del {
+  position: absolute; top: 3px; right: 3px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 10px;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  cursor: pointer;
+  padding: 0;
+}
+.status-box:hover .status-box-del {
+  opacity: 1;
+}
+.status-box-del:hover {
+  background: var(--error-dim);
+  color: var(--error);
+  opacity: 1 !important;
+}
+/* Label — visible now */
+.status-box-name { font-size:0.62rem; color:var(--text-2); text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .status-box-value { font-size:0.88rem; font-weight:700; }
+
+/* Add ping target button */
+.ping-add-btn {
+  background: rgba(255,255,255,0.03);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 8px 6px;
+  color: var(--text-3);
+  font-size: 0.75rem;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  gap: 4px;
+  min-width: 72px;
+}
+.ping-add-btn:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* Add-target inline form */
+.ping-add-form {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  animation: ping-box-in 0.2s ease both;
+}
+.ping-add-form .input {
+  font-size: 0.78rem;
+  padding: 5px 8px;
+  height: 30px;
+}
+.ping-add-form .btn {
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  height: 30px;
+  flex-shrink: 0;
+}
+.ping-add-form .btn-secondary {
+  padding: 5px 8px;
+  font-size: 0.78rem;
+  height: 30px;
+  flex-shrink: 0;
+}
 
 /* ─── Toolbar row ─── */
 .tools-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }

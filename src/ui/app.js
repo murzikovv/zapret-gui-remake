@@ -11,6 +11,19 @@ let uptimeStart = null;
 let currentActiveDomainTab = null;
 let domainLists = [];
 
+// ─── Ping Targets (persisted in localStorage) ───
+const PING_DEFAULTS = [
+    { name: 'YouTube', host: 'www.youtube.com' },
+    { name: 'Discord', host: 'discord.com' },
+    { name: 'Roblox', host: 'www.roblox.com' }
+];
+let pingTargets = JSON.parse(localStorage.getItem('zapret-ping-targets') || 'null') || [...PING_DEFAULTS];
+let showingAddPingForm = false;
+
+function savePingTargets() {
+    localStorage.setItem('zapret-ping-targets', JSON.stringify(pingTargets));
+}
+
 // DOM Elements
 const el = (id) => document.getElementById(id);
 const setupScreen = el('setup-screen');
@@ -987,12 +1000,119 @@ function formatUptime(ms) {
     return `${sec}с`;
 }
 
+// ─── Ping Grid Rendering ───
+function renderPingGrid() {
+    const container = el('pings-grid');
+    if (!container) return;
 
-// Pings
+    const boxesHtml = pingTargets.map((t, i) => `
+        <div class="status-box" id="ping-box-${i}">
+            <button class="status-box-del" onclick="removePingTarget(${i})" title="Удалить">×</button>
+            <div class="status-box-name" title="${t.host}">${t.name}</div>
+            <div class="status-box-value" id="ping-val-${i}" style="color:var(--text-3)">—</div>
+        </div>`).join('');
+
+    const addBtnHtml = `
+        <button class="ping-add-btn" id="ping-add-btn" onclick="toggleAddPingForm()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>`;
+
+    const cols = pingTargets.length + 1; // +1 for the add button
+    container.innerHTML = `
+        <div class="status-grid" id="ping-status-grid" style="grid-template-columns: repeat(${cols}, 1fr);">
+            ${boxesHtml}
+            ${addBtnHtml}
+        </div>
+        <div class="ping-add-form hidden" id="ping-add-form">
+            <input type="text" class="input" id="ping-add-name" placeholder="Название" maxlength="20">
+            <input type="text" class="input" id="ping-add-host" placeholder="example.com">
+            <button class="btn" id="ping-add-confirm" onclick="confirmAddPingTarget()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            <button class="btn-secondary" onclick="toggleAddPingForm()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>`;
+
+    // Enter / Escape for the add form
+    ['ping-add-name', 'ping-add-host'].forEach(id => {
+        const inp = el(id);
+        if (!inp) return;
+        inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                if (id === 'ping-add-name' && !el('ping-add-host').value.trim()) {
+                    el('ping-add-host').focus();
+                } else {
+                    confirmAddPingTarget();
+                }
+            }
+            if (e.key === 'Escape') toggleAddPingForm();
+        });
+    });
+}
+
+window.toggleAddPingForm = () => {
+    showingAddPingForm = !showingAddPingForm;
+    const form = el('ping-add-form');
+    const btn  = el('ping-add-btn');
+    if (!form) return;
+    if (showingAddPingForm) {
+        form.classList.remove('hidden');
+        if (btn) { btn.style.borderStyle = 'solid'; btn.style.borderColor = 'var(--accent-border)'; btn.style.color = 'var(--accent)'; btn.style.background = 'var(--accent-dim)'; }
+        setTimeout(() => el('ping-add-name')?.focus(), 60);
+    } else {
+        form.classList.add('hidden');
+        if (btn) { btn.style.borderStyle = ''; btn.style.borderColor = ''; btn.style.color = ''; btn.style.background = ''; }
+    }
+};
+
+window.confirmAddPingTarget = () => {
+    const nameEl = el('ping-add-name');
+    const hostEl = el('ping-add-host');
+    if (!nameEl || !hostEl) return;
+
+    const name = nameEl.value.trim();
+    let host   = hostEl.value.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
+    if (!name || !host) {
+        if (!name) nameEl.style.borderColor = 'var(--error)';
+        if (!host) hostEl.style.borderColor = 'var(--error)';
+        setTimeout(() => { nameEl.style.borderColor = ''; hostEl.style.borderColor = ''; }, 1500);
+        return;
+    }
+    if (pingTargets.some(t => t.host === host)) {
+        hostEl.style.borderColor = 'var(--warning)';
+        setTimeout(() => hostEl.style.borderColor = '', 1500);
+        return;
+    }
+
+    pingTargets.push({ name, host });
+    savePingTargets();
+    nameEl.value = '';
+    hostEl.value = '';
+    showingAddPingForm = false;
+    renderPingGrid();
+    // Immediately ping the new target
+    updatePingValues();
+    log(`✓ Добавлен сервис: ${name} (${host})`);
+};
+
+window.removePingTarget = (index) => {
+    const box = el(`ping-box-${index}`);
+    if (!box) return;
+    box.classList.add('removing');
+    setTimeout(() => {
+        pingTargets.splice(index, 1);
+        savePingTargets();
+        renderPingGrid();
+    }, 200);
+};
+
+// ─── Ping Polling ───
 async function startPings() {
     if (pingInterval) clearInterval(pingInterval);
-    updatePings();
-    pingInterval = setInterval(updatePings, 3000);
+    renderPingGrid();
+    updatePingValues();
+    pingInterval = setInterval(updatePingValues, 3000);
 }
 
 function stopPings() {
@@ -1000,20 +1120,20 @@ function stopPings() {
     pingInterval = null;
 }
 
-async function updatePings() {
+async function updatePingValues() {
     if (!isStrategyRunning) return;
-    const pings = await api.getPings();
-    const grid = el('pings-grid');
-    if (!grid) return;
-    const createBox = (name, ms) => `
-        <div class="status-box">
-            <div class="status-box-name">${name}</div>
-            <div class="status-box-value" style="color:${ms ? 'var(--success)' : 'var(--error)'}">
-                ${ms ? ms + ' ms' : '—'}
-            </div>
-        </div>`;
-    grid.innerHTML = `<div class="status-grid">${createBox('YouTube', pings.youtube) + createBox('Discord', pings.discord) + createBox('Roblox', pings.roblox)}</div>`;
+    const pings = await api.getPings(pingTargets);
+    pingTargets.forEach((t, i) => {
+        const valEl = el(`ping-val-${i}`);
+        if (!valEl) return;
+        const ms = pings[t.name];
+        valEl.style.color = ms != null ? 'var(--success)' : 'var(--error)';
+        valEl.textContent  = ms != null ? ms + ' ms' : '—';
+    });
 }
+
+// Keep old name as alias for legacy calls inside setStrategyStatus
+async function updatePings() { await updatePingValues(); }
 
 // Version Manager
 el('btn-version-manager').onclick = openVersionManager;

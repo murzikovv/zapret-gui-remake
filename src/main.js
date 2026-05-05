@@ -5,7 +5,7 @@ const net = require('net');
 const { spawn, exec, execSync } = require('child_process');
 const https = require('https');
 
-const APP_VERSION = '1.2.7';
+const APP_VERSION = '1.2.7b';
 const UPDATE_URL = 'https://raw.githubusercontent.com/murzikovv/zapret-gui-remake/main/version.json';
 
 ipcMain.handle('check-app-update', async () => {
@@ -468,57 +468,44 @@ ipcMain.handle('check-connection', async () => {
     return false;
 });
 
-ipcMain.handle('get-pings', async () => {
-    const targets = [
-        { name: 'youtube', host: 'www.youtube.com' },
-        { name: 'discord', host: 'discord.com' },
-        { name: 'roblox', host: 'www.roblox.com' }
+ipcMain.handle('get-pings', async (event, targets) => {
+    // Accept custom targets from the renderer, fall back to defaults
+    const targetList = (Array.isArray(targets) && targets.length > 0) ? targets : [
+        { name: 'YouTube', host: 'www.youtube.com' },
+        { name: 'Discord', host: 'discord.com' },
+        { name: 'Roblox', host: 'www.roblox.com' }
     ];
-
-    const pings = {};
 
     const pingHost = (host) => new Promise((resolve) => {
         const start = process.hrtime();
         const socket = new net.Socket();
-
         socket.setTimeout(2000);
-
         socket.on('connect', () => {
             const diff = process.hrtime(start);
             const ms = Math.round((diff[0] * 1000) + (diff[1] / 1000000));
             socket.destroy();
-
-            // Calibration: TCP Handshake is usually 2-3x raw ping.
-            // We apply a smart reduction to make it look like what Discord shows.
             let calibrated = ms;
-            if (ms > 100) calibrated = Math.round(ms * 0.6); // Scale down for high values
-            else calibrated = Math.round(ms - 20); // Minor reduction for low values
-
+            if (ms > 100) calibrated = Math.round(ms * 0.6);
+            else calibrated = Math.round(ms - 20);
             resolve(Math.max(15, calibrated));
         });
-
         socket.on('error', () => { socket.destroy(); resolve(null); });
         socket.on('timeout', () => { socket.destroy(); resolve(null); });
         socket.connect(443, host);
     });
 
     try {
-        // Run sequentially to avoid network congestion affecting measurements
-        const results = [];
-        for (const t of targets) {
-            results.push(await pingHost(t.host));
+        const result = {};
+        for (const t of targetList) {
+            result[t.name] = await pingHost(t.host);
         }
-
-        const pings = {
-            youtube: results[0],
-            discord: results[1],
-            roblox: results[2]
-        };
-        console.log(`[PINGS] YT: ${pings.youtube}ms, DS: ${pings.discord}ms, RB: ${pings.roblox}ms`);
-        return pings;
+        console.log('[PINGS]', Object.entries(result).map(([k,v]) => `${k}: ${v}ms`).join(', '));
+        return result;
     } catch (e) {
         console.error('[PING ERROR]', e);
-        return { youtube: null, discord: null, roblox: null };
+        const empty = {};
+        targetList.forEach(t => { empty[t.name] = null; });
+        return empty;
     }
 });
 
