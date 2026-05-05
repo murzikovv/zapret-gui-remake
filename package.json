@@ -19,6 +19,7 @@
   "build": {
     "appId": "com.murzikov.zapretgui",
     "productName": "Zapret GUI",
+    "icon": "assets/icon.png",
     "directories": {
       "output": "dist"
     },

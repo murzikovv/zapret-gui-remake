@@ -669,6 +669,7 @@ setOnClick('btn-app-update', async () => {
         console.log('[UI] Update check result:', res);
         if (res.success) {
             if (res.hasUpdate) {
+                el('btn-app-update').classList.add('has-update');
                 el('update-version-label').innerHTML = `
                     <div style="color:var(--success); font-weight:bold; font-size:1.1rem; margin-bottom:5px;">Доступна новая версия!</div>
                     <div style="color:var(--text-1); font-size:1rem;">Версия: ${res.version}</div>
@@ -679,6 +680,8 @@ setOnClick('btn-app-update', async () => {
                 latestAppUpdateUrl = res.url;
                 el('btn-app-download-now').classList.remove('hidden');
             } else {
+                // No update — make sure button is NOT highlighted
+                el('btn-app-update').classList.remove('has-update');
                 el('update-version-label').innerHTML = `
                     <div style="color:var(--text-3); margin-bottom:10px;">
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="opacity:0.3">
@@ -696,12 +699,17 @@ setOnClick('btn-app-update', async () => {
     }
 });
 
-// Silent background update check — only lights up button if update exists
+// Silent background update check — only lights up button if update exists, removes glow if up to date
 async function checkAppUpdateSilent() {
     try {
         const res = await api.checkAppUpdate();
-        if (res && res.success && res.hasUpdate) {
-            el('btn-app-update').classList.add('has-update');
+        if (res && res.success) {
+            if (res.hasUpdate) {
+                el('btn-app-update').classList.add('has-update');
+            } else {
+                // Ensure button is NOT glowing if we're on the latest version
+                el('btn-app-update').classList.remove('has-update');
+            }
         }
     } catch (e) {
         // Silently ignore — no network, no problem
@@ -709,6 +717,8 @@ async function checkAppUpdateSilent() {
 }
 // Run after a short delay so the app loads first
 setTimeout(checkAppUpdateSilent, 3000);
+// Recheck every 5 minutes so the button state stays accurate
+setInterval(checkAppUpdateSilent, 5 * 60 * 1000);
 
 setOnClick('btn-app-download-now', async () => {
     if (!latestAppUpdateUrl) return;

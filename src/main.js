@@ -5,7 +5,7 @@ const net = require('net');
 const { spawn, exec, execSync } = require('child_process');
 const https = require('https');
 
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.2.7';
 const UPDATE_URL = 'https://raw.githubusercontent.com/murzikovv/zapret-gui-remake/main/version.json';
 
 ipcMain.handle('check-app-update', async () => {
@@ -150,7 +150,22 @@ let activeProcess = null;
 let tray;
 let isQuitting = false;
 
+// ─── Robust icon path lookup (used both for window and tray) ───
+function getIconPath() {
+    const pathsToTry = [
+        path.join(app.getAppPath(), 'assets', 'icon.png'),
+        path.join(__dirname, '..', 'assets', 'icon.png'),
+        path.join(process.resourcesPath, 'assets', 'icon.png'),
+        path.join(process.resourcesPath, 'icon.png')
+    ];
+    for (const p of pathsToTry) {
+        if (fs.existsSync(p)) return p;
+    }
+    return '';
+}
+
 function createWindow() {
+    const iconPath = getIconPath();
     mainWindow = new BrowserWindow({
         width: 1000,
         height: 800,
@@ -161,7 +176,7 @@ function createWindow() {
         },
         autoHideMenuBar: true,
         backgroundColor: '#0c0e14',
-        icon: path.join(__dirname, '../assets/icon.png'),
+        icon: iconPath || undefined,
         frame: false,
     });
 
@@ -275,22 +290,7 @@ function createTray() {
     try {
         if (tray) return;
 
-        // Try multiple potential paths to find the icon
-        const pathsToTry = [
-            path.join(app.getAppPath(), 'assets', 'icon.png'),
-            path.join(__dirname, '..', 'assets', 'icon.png'),
-            path.join(process.resourcesPath, 'assets', 'icon.png'),
-            path.join(process.resourcesPath, 'icon.png')
-        ];
-
-        let iconPath = '';
-        for (const p of pathsToTry) {
-            if (fs.existsSync(p)) {
-                iconPath = p;
-                break;
-            }
-        }
-
+        const iconPath = getIconPath();
         if (!iconPath) {
             console.warn('[TRAY] Icon not found in any expected location');
             return;
