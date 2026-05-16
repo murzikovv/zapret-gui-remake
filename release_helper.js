@@ -108,14 +108,29 @@ async function start() {
     }
 
     // 5. Build
-    let exePath = path.resolve('dist', 'ZapretGUISetup.exe');
+    const exePath = path.resolve('dist', 'ZapretGUISetup.exe');
     let buildOk = false;
     if (doBuild) {
         console.log('\n→ npm run build');
+        const buildStartedAt = Date.now();
         const r = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { stdio: 'inherit' });
-        if (r.status === 0 && fs.existsSync(exePath)) {
+        // electron-builder often exits non-zero through npm.cmd because of unrelated
+        // npm warnings (extraneous deps etc.) even when the build succeeded. Trust
+        // the file: was ZapretGUISetup.exe written AFTER we started?
+        let exeFresh = false;
+        try {
+            if (fs.existsSync(exePath)) {
+                exeFresh = fs.statSync(exePath).mtimeMs >= buildStartedAt - 1000;
+            }
+        } catch (e) {}
+
+        if (exeFresh) {
             buildOk = true;
-            console.log(`\n✓ Готов установщик: ${exePath}`);
+            const sizeMB = (fs.statSync(exePath).size / 1048576).toFixed(1);
+            console.log(`\n✓ Готов установщик: ${exePath} (${sizeMB} MB)`);
+            if (r.status !== 0) {
+                console.log(`  (npm exit=${r.status}, но exe собран — игнор npm-варнингов)`);
+            }
         } else if (r.status === 0) {
             console.log('\n⚠ Сборка прошла, но ZapretGUISetup.exe не найден в dist/. Проверь имя.');
         } else {
