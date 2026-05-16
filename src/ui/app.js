@@ -29,6 +29,74 @@ const el = (id) => document.getElementById(id);
 const setupScreen = el('setup-screen');
 const mainApp = el('main-app');
 
+// ─── Toast notifications (non-blocking replacement for alert/confirm) ───
+const TOAST_ICONS = {
+    success: '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
+    error:   '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+    info:    '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+    warn:    '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+};
+function toast(message, type = 'info', durationMs = 3500) {
+    const container = el('toast-container');
+    if (!container) return;
+    const div = document.createElement('div');
+    div.className = `toast toast-${type}`;
+    div.innerHTML = TOAST_ICONS[type] || TOAST_ICONS.info;
+    const txt = document.createElement('div');
+    txt.className = 'toast-text';
+    txt.textContent = String(message);
+    div.appendChild(txt);
+    container.appendChild(div);
+    const remove = () => {
+        div.classList.add('removing');
+        setTimeout(() => div.remove(), 180);
+    };
+    div.onclick = remove;
+    setTimeout(remove, durationMs);
+}
+
+// ─── Strategy stats (lightweight history) ───
+// localStorage key: zapret-strategy-stats = { [name]: { runs, successes, failures, totalUptimeMs, lastRun, lastSuccess } }
+function loadStrategyStats() {
+    try { return JSON.parse(localStorage.getItem('zapret-strategy-stats') || '{}') || {}; }
+    catch (e) { return {}; }
+}
+function saveStrategyStats(stats) {
+    try { localStorage.setItem('zapret-strategy-stats', JSON.stringify(stats)); } catch (e) {}
+}
+function recordStrategyRun(name) {
+    const s = loadStrategyStats();
+    if (!s[name]) s[name] = { runs: 0, successes: 0, failures: 0, totalUptimeMs: 0, lastRun: 0, lastSuccess: 0 };
+    s[name].runs++;
+    s[name].lastRun = Date.now();
+    saveStrategyStats(s);
+}
+function recordStrategyResult(name, success) {
+    const s = loadStrategyStats();
+    if (!s[name]) s[name] = { runs: 0, successes: 0, failures: 0, totalUptimeMs: 0, lastRun: 0, lastSuccess: 0 };
+    if (success) {
+        s[name].successes++;
+        s[name].lastSuccess = Date.now();
+    } else {
+        s[name].failures++;
+    }
+    saveStrategyStats(s);
+}
+function recordStrategyUptime(name, uptimeMs) {
+    const s = loadStrategyStats();
+    if (!s[name]) return;
+    s[name].totalUptimeMs = (s[name].totalUptimeMs || 0) + uptimeMs;
+    saveStrategyStats(s);
+}
+
+// ─── Esc closes any open modal ───
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const open = document.querySelector('.modal-overlay:not(.hidden)');
+        if (open) open.classList.add('hidden');
+    }
+});
+
 // ─── Theme System ───
 const PRESET_VARS = {
     dark:     { '--bg':'#0c0e14','--bg-2':'#131620','--bg-card':'#181b25','--bg-card-hover':'#1e2230','--bg-elevated':'#1f2335','--text-1':'#e8eaf0','--text-2':'#8b90a0','--text-3':'#525666','--accent':'#5b8def','--success':'#4ade80','--error':'#f87171','--warning':'#fbbf24','--btn-shadow':'rgba(0,0,0,0.45)' },
@@ -281,7 +349,7 @@ setOnClick('btn-theme-template-save', () => {
     const nameInput = el('theme-template-name');
     if (!nameInput) return;
     const name = nameInput.value.trim();
-    if (!name) return alert('Введите название шаблона');
+    if (!name) return toast('Введите название шаблона', 'warn');
     
     const template = {
         name: name,
@@ -548,7 +616,7 @@ setOnChange('bg-file-input', async (e) => {
         const arrBuf = await file.arrayBuffer();
         const saved = await api.bgImageSave(arrBuf, ext);
         if (!saved || !saved.success) {
-            alert('Не удалось сохранить картинку');
+            toast('Не удалось сохранить картинку', 'error');
             return;
         }
         // Build a fresh dataURL for immediate preview without an extra disk read
@@ -569,7 +637,7 @@ setOnChange('bg-file-input', async (e) => {
         reader.readAsDataURL(file);
     } catch (err) {
         console.error('[BG]', err);
-        alert('Ошибка загрузки картинки: ' + (err.message || err));
+        toast('Ошибка загрузки картинки: ' + (err.message || err), 'error', 5000);
     } finally {
         e.target.value = '';
     }
@@ -702,7 +770,7 @@ setOnClick('btn-save-domains', async () => {
         btn.innerText = 'Сохранено!';
         setTimeout(() => btn.innerText = 'Сохранить', 2000);
     } else {
-        alert("Ошибка сохранения");
+        toast('Ошибка сохранения списка доменов', 'error');
     }
 });
 
@@ -713,7 +781,7 @@ setOnClick('btn-autostart', async () => {
 });
 
 setOnClick('btn-service-manager', async () => {
-    if (!currentFolder) return alert('Сначала выберите папку Zapret');
+    if (!currentFolder) return toast('Сначала выберите папку Zapret', 'warn');
     el('modal-service').classList.remove('hidden');
     await refreshServiceModal();
 });
@@ -906,7 +974,7 @@ setOnClick('btn-app-download-now', async () => {
     if (result && result.alreadyDownloading) return; // progress events keep flowing
 
     // Real failure
-    alert('Ошибка при загрузке обновления');
+    toast('Ошибка при загрузке обновления', 'error');
     el('btn-app-download-now').classList.remove('hidden');
     el('btn-app-download-cancel').classList.add('hidden');
     el('update-progress-wrap').classList.add('hidden');
@@ -944,6 +1012,21 @@ async function init() {
         await loadStrategies();
         checkAutostart();
         await checkForOrphanZapret();
+
+        // Auto-reconnect last strategy if enabled and one was previously selected
+        if (localStorage.getItem('zapret-auto-reconnect') === 'on' && !isStrategyRunning) {
+            const last = localStorage.getItem('last-strategy');
+            if (last && strategies.includes(last)) {
+                selectedStrategy = last;
+                setTimeout(() => {
+                    if (!isStrategyRunning) {
+                        log(`↻ Авто-реконнект: ${last.replace(/\.bat$/i,'')}`);
+                        toast('Авто-реконнект последней стратегии', 'info', 2500);
+                        startSelectedStrategy();
+                    }
+                }, 800);
+            }
+        }
     } else {
         setupScreen.style.display = 'flex';
         mainApp.style.display = 'none';
@@ -991,7 +1074,15 @@ async function init() {
                 const name = (strategy || '').replace(/\.bat$/i, '');
                 log(`✗ Обход завершился (код ${code})${name ? ': ' + name : ''}`);
                 setStrategyStatus(false, null);
+                toast(`Обход внезапно остановился${name ? ': ' + name : ''}`, 'warn', 5000);
             }
+        });
+    }
+
+    if (api.onGlobalHotkeyToggle) {
+        api.onGlobalHotkeyToggle(() => {
+            toast(isStrategyRunning ? 'Хоткей: отключаю обход' : 'Хоткей: подключаю обход', 'info', 2000);
+            startSelectedStrategy();
         });
     }
 }
@@ -1010,21 +1101,57 @@ async function handleSelectFolder() {
 // Strategies List
 async function loadStrategies() {
     if (!currentFolder) return;
-    strategies = await api.listStrategies(currentFolder);
+    const rawList = await api.listStrategies(currentFolder);
+    const stats = loadStrategyStats();
+
+    // Smart sort: previously successful first (by last success), then unknown alphabetic
+    const sorted = [...rawList].sort((a, b) => {
+        const aLast = stats[a]?.lastSuccess || 0;
+        const bLast = stats[b]?.lastSuccess || 0;
+        if (aLast !== bLast) return bLast - aLast;
+        const aSucc = stats[a]?.successes || 0;
+        const bSucc = stats[b]?.successes || 0;
+        if (aSucc !== bSucc) return bSucc - aSucc;
+        return a.localeCompare(b, 'ru');
+    });
+    strategies = sorted;
+
     const listEl = el('strategy-list');
     listEl.innerHTML = '';
-    
     el('strategy-count').innerText = strategies.length;
 
     strategies.forEach(s => {
+        const stat = stats[s];
         const div = document.createElement('div');
         div.className = 'strategy-item';
-        div.title = s;
-        const label = s.replace(/\.bat$/i, '');
-        div.innerHTML = `
-            <span class="check">${selectedStrategy === s ? '▸' : ''}</span>
-            <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1;">${label}</span>
-        `;
+        div.title = s + (stat ? ` · запусков: ${stat.runs}, успешных: ${stat.successes}` : '');
+
+        const check = document.createElement('span');
+        check.className = 'check';
+        check.textContent = selectedStrategy === s ? '▸' : '';
+
+        const label = document.createElement('span');
+        label.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;';
+        label.textContent = s.replace(/\.bat$/i, '');
+
+        div.appendChild(check);
+        div.appendChild(label);
+
+        // Badge: ✓N for proven-working, no badge for untested
+        if (stat && stat.successes > 0) {
+            const badge = document.createElement('span');
+            badge.style.cssText = 'font-size:0.66rem;color:var(--success);background:var(--success-dim);padding:1px 5px;border-radius:8px;margin-left:auto;flex-shrink:0;';
+            badge.textContent = '✓' + stat.successes;
+            badge.title = `Успешно запускалась ${stat.successes} раз${stat.totalUptimeMs ? ` · общий аптайм ${formatUptime(stat.totalUptimeMs)}` : ''}`;
+            div.appendChild(badge);
+        } else if (stat && stat.failures > 0) {
+            const badge = document.createElement('span');
+            badge.style.cssText = 'font-size:0.66rem;color:var(--text-3);margin-left:auto;flex-shrink:0;';
+            badge.textContent = '×' + stat.failures;
+            badge.title = `Не сработала ${stat.failures} раз`;
+            div.appendChild(badge);
+        }
+
         div.onclick = () => selectStrategy(s, div);
         div.ondblclick = () => startSelectedStrategy();
         listEl.appendChild(div);
@@ -1032,7 +1159,7 @@ async function loadStrategies() {
 
     const last = localStorage.getItem('last-strategy');
     if (last && strategies.includes(last)) {
-        selectStrategy(last, Array.from(listEl.children).find(e => e.title === last));
+        selectStrategy(last, Array.from(listEl.children).find(e => e.title.startsWith(last)));
     } else if (strategies.length > 0) {
         selectStrategy(strategies[0], listEl.children[0]);
     }
@@ -1074,10 +1201,13 @@ async function startSelectedStrategy() {
             const res = await api.startStrategy(currentFolder, selectedStrategy);
             if (res.success) {
                 localStorage.setItem('last-strategy', selectedStrategy);
+                recordStrategyRun(selectedStrategy);
                 setStrategyStatus(true, selectedStrategy);
                 log(`✓ Подключено · ${name}`);
             } else {
+                recordStrategyResult(selectedStrategy, false);
                 log(`✗ Ошибка запуска: ${res.error || 'неизвестная ошибка'}`);
+                toast('Не удалось запустить обход', 'error');
             }
         }
     } finally {
@@ -1113,48 +1243,72 @@ function stopUptime() {
 
 setOnClick('btn-find-working', async () => {
     if (!currentFolder || strategies.length === 0) {
-        return alert('Нет доступных обходов в выбранной папке');
+        return toast('Нет доступных обходов в выбранной папке', 'warn');
     }
-    
+
     const btn = el('btn-find-working');
     btn.disabled = true;
-    btn.innerText = 'Поиск...';
-    
+
     if (isStrategyRunning) {
         await api.stopStrategy();
         setStrategyStatus(false, null);
     }
-    
-    let found = false;
-    for (const s of strategies) {
+
+    // Smart-sort: try strategies that previously worked first
+    const stats = loadStrategyStats();
+    const ordered = [...strategies].sort((a, b) => {
+        const aS = stats[a]?.successes || 0;
+        const bS = stats[b]?.successes || 0;
+        if (aS !== bS) return bS - aS;
+        return (stats[b]?.lastSuccess || 0) - (stats[a]?.lastSuccess || 0);
+    });
+
+    // Quick test: poll connection every 600ms up to 3s. If it succeeds early — move on.
+    // Cuts wait time from fixed 4s to ~1-3s per strategy.
+    const POLL_INTERVAL = 600;
+    const MAX_WAIT_MS = 3000;
+    let found = null;
+    let tested = 0;
+
+    for (const s of ordered) {
+        tested++;
+        btn.innerText = `Тест ${tested}/${ordered.length}: ${s.replace(/\.bat$/i,'').slice(0,18)}…`;
         selectStrategy(s, Array.from(el('strategy-list').children).find(e => e.title === s));
         const res = await api.startStrategy(currentFolder, s);
-        if (res.success) {
-            setStrategyStatus(true, s);
-            log(`Тестирование: ${s}...`);
-            await new Promise(r => setTimeout(r, 4000));
-            const check = await api.checkConnection();
-            if (check) {
-                log(`✓ Найден рабочий обход: ${s}`);
-                localStorage.setItem('last-strategy', s);
-                found = true;
-                break;
-            } else {
-                log(`✗ Не работает: ${s}`);
-                await api.stopStrategy();
-                setStrategyStatus(false, null);
-            }
+        if (!res.success) {
+            log(`✗ Не запустилось: ${s}`);
+            continue;
         }
+        setStrategyStatus(true, s);
+
+        const startedAt = Date.now();
+        let ok = false;
+        while (Date.now() - startedAt < MAX_WAIT_MS) {
+            await new Promise(r => setTimeout(r, POLL_INTERVAL));
+            ok = await api.checkConnection();
+            if (ok) break;
+        }
+        if (ok) {
+            log(`✓ Найден рабочий обход (${(Date.now()-startedAt)}мс): ${s}`);
+            localStorage.setItem('last-strategy', s);
+            recordStrategyResult(s, true);
+            found = s;
+            break;
+        }
+        recordStrategyResult(s, false);
+        log(`✗ Не работает: ${s}`);
+        await api.stopStrategy();
+        setStrategyStatus(false, null);
     }
-    
+
     if (found) {
-        alert('Рабочий обход найден и запущен!');
+        toast(`Рабочий обход найден: ${found.replace(/\.bat$/i,'')}`, 'success', 5000);
     } else {
-        alert('Рабочий обход не найден');
+        toast(`Рабочий обход не найден (проверено ${tested})`, 'error', 5000);
     }
-    
+
     btn.disabled = false;
-    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Найти рабочий`;
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Найти рабочий`;
 });
 
 function setStrategyStatus(running, name) {
@@ -1188,7 +1342,13 @@ function setStrategyStatus(running, name) {
         startUptime();
     } else {
         const uptime = uptimeStart ? formatUptime(Date.now() - uptimeStart) : null;
-        if (uptime) log(`■ Обход остановлен · работал ${uptime}`);
+        if (uptime) {
+            log(`■ Обход остановлен · работал ${uptime}`);
+            // Strategies that ran for >30s count as "success" (winws didn't die immediately)
+            const ms = Date.now() - uptimeStart;
+            if (runningStrategyName) recordStrategyUptime(runningStrategyName, ms);
+            if (ms > 30000 && selectedStrategy) recordStrategyResult(selectedStrategy, true);
+        }
         sideBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Запустить`;
         sideBtn.classList.remove('danger');
         connectBtn.classList.remove('running');
@@ -1485,7 +1645,7 @@ window.installVersion = async (url, version) => {
     if (res.success) {
         activateVersion(res.path);
     } else {
-        alert("Ошибка установки: " + res.error);
+        toast('Ошибка установки: ' + res.error, 'error', 5000);
     }
 };
 
@@ -1568,7 +1728,14 @@ async function refreshServiceModal() {
     el('select-cfg-game').value = config.GAME_FILTER || 'disabled';
     el('select-cfg-auto').value = config.AUTO_UPDATE || 'disabled';
     el('select-cfg-ipset').value = config.IPSET_FILTER || 'none';
+    const ar = el('select-cfg-autoreconnect');
+    if (ar) ar.value = localStorage.getItem('zapret-auto-reconnect') === 'on' ? 'on' : 'off';
 }
+
+setOnChange('select-cfg-autoreconnect', (e) => {
+    localStorage.setItem('zapret-auto-reconnect', e.target.value);
+    toast('Авто-реконнект: ' + (e.target.value === 'on' ? 'ВКЛ' : 'ВЫКЛ'), 'info', 2000);
+});
 
 setOnClick('btn-service-install', async () => {
     await api.installService(currentFolder);

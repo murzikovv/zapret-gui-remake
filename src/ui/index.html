@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- CSP: only allow our own scripts/styles + data:/blob: images (bg image). No remote JS, no inline JS via eval. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' wss: https:; object-src 'none'; base-uri 'self';">
     <title>Zapret GUI</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -12,6 +14,8 @@
     <div id="app-bg"></div>
     <!-- Glass Overlay (color tint over background image) -->
     <div id="glass-overlay"></div>
+    <!-- Toast container (non-blocking notifications) -->
+    <div id="toast-container"></div>
 
     <!-- Titlebar -->
     <div class="titlebar">
@@ -332,6 +336,17 @@
                                 <option value="disabled">Выкл.</option>
                                 <option value="enabled">Вкл.</option>
                             </select>
+                        </div>
+                        <div class="cfg-row">
+                            <span class="cfg-label" title="При запуске приложения автоматически поднимать последнюю использованную стратегию">Авто-реконнект</span>
+                            <select class="input" style="width:auto; font-size:0.78rem;" id="select-cfg-autoreconnect">
+                                <option value="off">Выкл.</option>
+                                <option value="on">Вкл.</option>
+                            </select>
+                        </div>
+                        <div class="cfg-row">
+                            <span class="cfg-label" title="Глобальный хоткей для подключения/отключения. Работает даже когда окно скрыто.">Хоткей Ctrl+Shift+Z</span>
+                            <span style="font-size:0.78rem; color:var(--text-3);">Всегда вкл</span>
                         </div>
                     </div>
                 </div>

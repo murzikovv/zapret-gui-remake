@@ -1,11 +1,11 @@
-const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, session } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, session, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
-const { spawn, exec, execSync } = require('child_process');
+const { spawn, exec, execFile, execSync } = require('child_process');
 const https = require('https');
 
-const APP_VERSION = '1.2.8c';
+const APP_VERSION = '1.2.9';
 const UPDATE_URL = 'https://raw.githubusercontent.com/murzikovv/zapret-gui-remake/main/version.json';
 
 ipcMain.handle('check-app-update', async () => {
@@ -469,9 +469,25 @@ app.whenReady().then(() => {
     createWindow();
     selfHealAutostart();
 
+    // Global hotkey: Ctrl+Shift+Z toggles bypass even when window is hidden in tray
+    try {
+        const ok = globalShortcut.register('Control+Shift+Z', () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('global-hotkey-toggle');
+            }
+        });
+        console.log('[HOTKEY] Ctrl+Shift+Z registered:', ok);
+    } catch (e) {
+        console.warn('[HOTKEY] register failed:', e.message);
+    }
+
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+});
+
+app.on('will-quit', () => {
+    try { globalShortcut.unregisterAll(); } catch (e) {}
 });
 
 app.on('window-all-closed', () => {
@@ -1069,7 +1085,10 @@ ipcMain.handle('update-ipset', async (event, folderPath) => {
         const scriptPath = path.join(folderPath, 'ipset', 'get_config.cmd');
         if (fs.existsSync(scriptPath)) {
             // Run as Admin to ensure it can write to program files / protected folders
-            exec(`powershell Start-Process -FilePath "${scriptPath}" -Verb RunAs -Wait`, { cwd: folderPath }, (err) => {
+            execFile('powershell.exe', [
+                '-NoProfile',
+                'Start-Process', '-FilePath', scriptPath, '-Verb', 'RunAs', '-Wait'
+            ], { cwd: folderPath, windowsHide: true }, (err) => {
                 resolve({ success: !err, error: err?.message });
             });
             return;
@@ -1078,8 +1097,10 @@ ipcMain.handle('update-ipset', async (event, folderPath) => {
         // Try Flowseal method
         const listFile = path.join(folderPath, 'lists', 'ipset-all.txt');
         const url = 'https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/refs/heads/main/.service/ipset-service.txt';
-        const ps = `Invoke-WebRequest -Uri '${url}' -UseBasicParsing | Select-Object -ExpandProperty Content | Out-File -FilePath '${listFile}' -Encoding UTF8`;
-        exec(`powershell -NoProfile -Command "${ps}"`, (err) => {
+        execFile('powershell.exe', [
+            '-NoProfile', '-NonInteractive', '-Command',
+            `Invoke-WebRequest -Uri '${url}' -UseBasicParsing | Select-Object -ExpandProperty Content | Out-File -FilePath $env:ZAPRET_LIST_FILE -Encoding UTF8`
+        ], { env: { ...process.env, ZAPRET_LIST_FILE: listFile }, windowsHide: true }, (err) => {
             resolve({ success: !err, error: err?.message });
         });
     });
@@ -1089,7 +1110,10 @@ ipcMain.handle('update-hosts', async (event, folderPath) => {
     return new Promise((resolve) => {
         const scriptPath = path.join(folderPath, 'ipset', 'get_hostlist.cmd');
         if (fs.existsSync(scriptPath)) {
-            exec(`powershell Start-Process -FilePath "${scriptPath}" -Verb RunAs -Wait`, { cwd: folderPath }, (err) => {
+            execFile('powershell.exe', [
+                '-NoProfile',
+                'Start-Process', '-FilePath', scriptPath, '-Verb', 'RunAs', '-Wait'
+            ], { cwd: folderPath, windowsHide: true }, (err) => {
                 resolve({ success: !err, error: err?.message });
             });
             return;
@@ -1097,50 +1121,49 @@ ipcMain.handle('update-hosts', async (event, folderPath) => {
 
         const url = 'https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/refs/heads/main/.service/hosts';
         const tempFile = path.join(app.getPath('temp'), 'zapret_hosts.txt');
-        const ps = `Invoke-WebRequest -Uri '${url}' -UseBasicParsing | Select-Object -ExpandProperty Content | Out-File -FilePath '${tempFile}' -Encoding UTF8`;
-
-        exec(`powershell -NoProfile -Command "${ps}"`, (err) => {
+        execFile('powershell.exe', [
+            '-NoProfile', '-NonInteractive', '-Command',
+            `Invoke-WebRequest -Uri '${url}' -UseBasicParsing | Select-Object -ExpandProperty Content | Out-File -FilePath $env:ZAPRET_TEMP_FILE -Encoding UTF8`
+        ], { env: { ...process.env, ZAPRET_TEMP_FILE: tempFile }, windowsHide: true }, (err) => {
             if (err) return resolve({ success: false, error: 'Ошибка загрузки hosts файла' });
-            exec(`start notepad "${tempFile}"`);
-            exec(`explorer /select,"${process.env.SystemRoot}\\System32\\drivers\\etc\\hosts"`);
+            // open downloaded file in Notepad, no shell needed
+            execFile('notepad.exe', [tempFile], { windowsHide: false });
+            const hostsPath = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'drivers', 'etc', 'hosts');
+            execFile('explorer.exe', ['/select,', hostsPath], { windowsHide: false });
             resolve({ success: true });
         });
     });
 });
 
-ipcMain.handle('run-diagnostics', async (event, folderPath) => {
-    return new Promise((resolve) => {
-        // Flowseal: диагностика через test zapret.ps1
-        const psScript = path.join(folderPath, 'utils', 'test zapret.ps1');
-        const blockcheck = path.join(folderPath, 'blockcheck.cmd');
+function spawnDetached(cmd, args, cwd) {
+    // Spawn a visible console window detached from this process — used for diagnostics/test scripts
+    spawn(cmd, args, { cwd, detached: true, stdio: 'ignore', windowsHide: false }).unref();
+}
 
-        if (fs.existsSync(psScript)) {
-            exec(`start "" powershell -NoProfile -ExecutionPolicy Bypass -File "${psScript}"`, { cwd: folderPath });
-            resolve({ success: true });
-        } else if (fs.existsSync(blockcheck)) {
-            exec(`start "" cmd.exe /k "${blockcheck}"`, { cwd: folderPath });
-            resolve({ success: true });
-        } else {
-            resolve({ success: false, error: 'Скрипт диагностики не найден' });
-        }
-    });
+ipcMain.handle('run-diagnostics', async (event, folderPath) => {
+    const psScript = path.join(folderPath, 'utils', 'test zapret.ps1');
+    const blockcheck = path.join(folderPath, 'blockcheck.cmd');
+    if (fs.existsSync(psScript)) {
+        spawnDetached('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psScript], folderPath);
+        return { success: true };
+    } else if (fs.existsSync(blockcheck)) {
+        spawnDetached('cmd.exe', ['/k', blockcheck], folderPath);
+        return { success: true };
+    }
+    return { success: false, error: 'Скрипт диагностики не найден' };
 });
 
 ipcMain.handle('run-tests', async (event, folderPath) => {
-    return new Promise((resolve) => {
-        const psScript = path.join(folderPath, 'utils', 'test zapret.ps1');
-        const cmdScript = path.join(folderPath, 'test.cmd');
-
-        if (fs.existsSync(psScript)) {
-            exec(`start "" powershell -NoProfile -ExecutionPolicy Bypass -File "${psScript}"`, { cwd: folderPath });
-            resolve({ success: true });
-        } else if (fs.existsSync(cmdScript)) {
-            exec(`start "" cmd.exe /k "${cmdScript}"`, { cwd: folderPath });
-            resolve({ success: true });
-        } else {
-            resolve({ success: false, error: 'Скрипт тестирования не найден' });
-        }
-    });
+    const psScript = path.join(folderPath, 'utils', 'test zapret.ps1');
+    const cmdScript = path.join(folderPath, 'test.cmd');
+    if (fs.existsSync(psScript)) {
+        spawnDetached('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psScript], folderPath);
+        return { success: true };
+    } else if (fs.existsSync(cmdScript)) {
+        spawnDetached('cmd.exe', ['/k', cmdScript], folderPath);
+        return { success: true };
+    }
+    return { success: false, error: 'Скрипт тестирования не найден' };
 });
 
 // Domain List Management
@@ -1230,28 +1253,16 @@ ipcMain.handle('save-list', async (event, { folderPath, filename, content }) => 
 ipcMain.handle('install-service', async (event, folderPath) => {
     const serviceScript = path.join(folderPath, 'service_install.bat');
     const serviceBat = path.join(folderPath, 'service.bat');
-
-    if (fs.existsSync(serviceScript)) {
-        exec(`start "" cmd.exe /k "${serviceScript}"`, { cwd: folderPath });
-        return true;
-    } else if (fs.existsSync(serviceBat)) {
-        exec(`start "" cmd.exe /k "${serviceBat}"`, { cwd: folderPath });
-        return true;
-    }
+    if (fs.existsSync(serviceScript)) { spawnDetached('cmd.exe', ['/k', serviceScript], folderPath); return true; }
+    if (fs.existsSync(serviceBat))    { spawnDetached('cmd.exe', ['/k', serviceBat], folderPath);    return true; }
     return false;
 });
 
 ipcMain.handle('remove-service', async (event, folderPath) => {
     const removeScript = path.join(folderPath, 'service_remove.bat');
     const serviceBat = path.join(folderPath, 'service.bat');
-
-    if (fs.existsSync(removeScript)) {
-        exec(`start "" cmd.exe /k "${removeScript}"`, { cwd: folderPath });
-        return true;
-    } else if (fs.existsSync(serviceBat)) {
-        exec(`start "" cmd.exe /k "${serviceBat}"`, { cwd: folderPath });
-        return true;
-    }
+    if (fs.existsSync(removeScript)) { spawnDetached('cmd.exe', ['/k', removeScript], folderPath); return true; }
+    if (fs.existsSync(serviceBat))   { spawnDetached('cmd.exe', ['/k', serviceBat], folderPath);   return true; }
     return false;
 });
 

@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Live zapret/winws output
     onZapretLog: (callback) => ipcRenderer.on('zapret-log', (event, line) => callback(line)),
     onZapretExited: (callback) => ipcRenderer.on('zapret-exited', (event, payload) => callback(payload)),
+    onGlobalHotkeyToggle: (callback) => ipcRenderer.on('global-hotkey-toggle', () => callback()),
 
     // Orphan winws detection at startup
     detectOrphanZapret: () => ipcRenderer.invoke('detect-orphan-zapret'),
