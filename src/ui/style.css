@@ -326,6 +326,8 @@ button:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 .connect-btn:hover::before { border-color: var(--accent-border); }
 .connect-btn:hover::after  { border-color: var(--accent-dim); }
 .connect-btn:active { transform: scale(0.97); }
+.connect-btn.busy { pointer-events: none; opacity: 0.65; animation: connect-busy-pulse 0.9s ease-in-out infinite; }
+@keyframes connect-busy-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(0.96); } }
 
 .connect-btn.running {
   color: var(--success);
@@ -563,6 +565,17 @@ select.input { padding: 5px 8px; cursor: pointer; appearance: auto; }
 /* Label — visible now */
 .status-box-name { font-size:0.62rem; color:var(--text-2); text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .status-box-value { font-size:0.88rem; font-weight:700; }
+.ping-spark {
+  margin-top: 4px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--success);
+  opacity: 0.85;
+  transition: color 0.25s;
+}
+.ping-spark svg { display: block; }
 
 /* Add ping target button */
 .ping-add-btn {

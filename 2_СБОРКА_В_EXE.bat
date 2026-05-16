@@ -1,9 +1,13 @@
 @echo off
-chcp 65001 > nul
-echo Начинается компиляция программы в Установочный EXE файл (Installer)...
-echo Это может занять пару минут. Пожалуйста, подождите.
-npm run build
+cd /d "%~dp0"
+call npm run build
+if errorlevel 1 (
+    echo.
+    echo BUILD FAILED. Code: %errorlevel%
+    pause
+    exit /b 1
+)
 echo.
-echo Сборка завершена! Ищите установочный файл "Zapret GUI Setup 1.0.0.exe" в папке "dist".
-echo Вы можете скинуть его друзьям — он установит программу и создаст ярлык на рабочем столе.
+echo OK. Installer: dist\ZapretGUISetup.exe
 pause
+exit /b 0

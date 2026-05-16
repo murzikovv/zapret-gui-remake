@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     downloadInstallZapret: (data) => ipcRenderer.invoke('download-install-zapret', data),
     listInstalledVersions: () => ipcRenderer.invoke('list-installed-versions'),
     onDownloadProgress: (callback) => ipcRenderer.on('download-progress', (event, value) => callback(value)),
+    onAppUpdateProgress: (callback) => ipcRenderer.on('app-update-progress', (event, value) => callback(value)),
 
     // Manager
     getLists: (folderPath) => ipcRenderer.invoke('get-lists', folderPath),
@@ -52,4 +53,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // App Updates
     checkAppUpdate: () => ipcRenderer.invoke('check-app-update'),
     downloadAppUpdate: (url) => ipcRenderer.invoke('download-app-update', url),
+    getUpdateDownloadState: () => ipcRenderer.invoke('get-update-download-state'),
+
+    // Live zapret/winws output
+    onZapretLog: (callback) => ipcRenderer.on('zapret-log', (event, line) => callback(line)),
+    onZapretExited: (callback) => ipcRenderer.on('zapret-exited', (event, payload) => callback(payload)),
+
+    // Orphan winws detection at startup
+    detectOrphanZapret: () => ipcRenderer.invoke('detect-orphan-zapret'),
+    killOrphanZapret: () => ipcRenderer.invoke('kill-orphan-zapret'),
+    adoptOrphanZapret: () => ipcRenderer.invoke('adopt-orphan-zapret'),
+
+    // Background image — on disk (avoid localStorage quota cap)
+    bgImageSave: (buffer, ext) => ipcRenderer.invoke('bg-image-save', { buffer, ext }),
+    bgImageLoad: () => ipcRenderer.invoke('bg-image-load'),
+    bgImageRemove: () => ipcRenderer.invoke('bg-image-remove'),
 });

@@ -84,6 +84,22 @@ function syncGlassRgb() {
     }
 }
 
+// Cache of the current background image dataURL. Loaded from disk via IPC on demand,
+// not stored in localStorage (avoids the 5–10 MB quota for large GIFs).
+let bgImageDataUrl = null;
+
+async function loadBgFromDiskIfNeeded() {
+    if (bgImageDataUrl !== null) return bgImageDataUrl;
+    if (!api.bgImageLoad) return null;
+    try {
+        const dataUrl = await api.bgImageLoad();
+        bgImageDataUrl = dataUrl || null;
+        return bgImageDataUrl;
+    } catch (e) {
+        return null;
+    }
+}
+
 function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('zapret-theme', theme);
@@ -99,11 +115,13 @@ function applyTheme(theme) {
         } else {
             openThemeEditor();
         }
-        // Restore custom background if saved
-        const savedBg   = localStorage.getItem('zapret-bg-image');
+        // Restore custom background if saved (async load from disk)
+        const hasBg = localStorage.getItem('zapret-bg-has-image') === '1';
         const savedBlur = parseInt(localStorage.getItem('zapret-bg-blur') || '0', 10);
-        if (savedBg) {
-            applyBackground(savedBg, savedBlur);
+        if (hasBg) {
+            loadBgFromDiskIfNeeded().then(dataUrl => {
+                if (dataUrl) applyBackground(dataUrl, savedBlur);
+            });
         }
     } else {
         // Hide background for built-in themes
@@ -268,7 +286,8 @@ setOnClick('btn-theme-template-save', () => {
     const template = {
         name: name,
         vars: getEditorVars(),
-        bgImage: localStorage.getItem('zapret-bg-image') || null,
+        // bgImage held in memory (loaded from disk by IPC) — templates remain self-contained
+        bgImage: bgImageDataUrl || null,
         bgBlur: localStorage.getItem('zapret-bg-blur') || '0',
         uiBlur: localStorage.getItem('zapret-ui-blur') || '16',
         overlayColor: localStorage.getItem('zapret-overlay-color') || '#000000',
@@ -294,21 +313,42 @@ setOnClick('btn-theme-template-save', () => {
     loadCustomTemplates();
 });
 
-function applyThemeTemplate(tpl) {
+async function applyThemeTemplate(tpl) {
     localStorage.setItem('zapret-custom-vars', JSON.stringify(tpl.vars));
-    
-    if (tpl.bgImage) localStorage.setItem('zapret-bg-image', tpl.bgImage);
-    else localStorage.removeItem('zapret-bg-image');
-    
+
+    // Persist template's bg image to disk (or wipe if template has none)
+    if (tpl.bgImage && api.bgImageSave) {
+        try {
+            const m = /^data:(image\/[a-z+\-.]+);base64,(.+)$/i.exec(tpl.bgImage);
+            if (m) {
+                const mime = m[1].toLowerCase();
+                const ext = mime === 'image/jpeg' ? 'jpg'
+                          : mime === 'image/gif'  ? 'gif'
+                          : mime === 'image/webp' ? 'webp'
+                          : mime === 'image/png'  ? 'png' : 'png';
+                const bin = atob(m[2]);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                await api.bgImageSave(bytes.buffer, ext);
+                bgImageDataUrl = tpl.bgImage;
+                localStorage.setItem('zapret-bg-has-image', '1');
+            }
+        } catch (e) { console.warn('[BG] template apply failed:', e); }
+    } else if (api.bgImageRemove) {
+        try { await api.bgImageRemove(); } catch (e) {}
+        bgImageDataUrl = null;
+        localStorage.removeItem('zapret-bg-has-image');
+    }
+
     localStorage.setItem('zapret-bg-blur', tpl.bgBlur);
     localStorage.setItem('zapret-ui-blur', tpl.uiBlur);
     localStorage.setItem('zapret-overlay-color', tpl.overlayColor);
     localStorage.setItem('zapret-overlay-opacity', tpl.overlayOpacity);
     localStorage.setItem('zapret-glass-color', tpl.glassColor);
     localStorage.setItem('zapret-glass-opacity', tpl.glassOpacity);
-    
+
     openThemeEditor();
-    
+
     if (tpl.bgImage) applyBackground(tpl.bgImage, parseInt(tpl.bgBlur, 10));
     else applyBackground(null, 0);
     
@@ -417,8 +457,7 @@ function applyGlassTint(color, opacity) {
 }
 
 // Load saved bg on boot (only if custom theme is active)
-(function() {
-    const savedBg       = localStorage.getItem('zapret-bg-image');
+(async function() {
     const savedBlur     = parseInt(localStorage.getItem('zapret-bg-blur') || '0', 10);
     const savedUiBlur   = parseInt(localStorage.getItem('zapret-ui-blur') || '16', 10);
     const savedOvColor  = localStorage.getItem('zapret-overlay-color') || '#000000';
@@ -451,45 +490,98 @@ function applyGlassTint(color, opacity) {
     if (glassSlider)      glassSlider.value      = savedGlassOpac;
     if (glassVal)         glassVal.textContent   = savedGlassOpac + '%';
     document.documentElement.style.setProperty('--ui-blur', savedUiBlur + 'px');
-    // Only show background when on custom theme
-    const currentTheme = localStorage.getItem('zapret-theme') || 'dark';
-    if (savedBg && currentTheme === 'custom') {
-        applyBackground(savedBg, savedBlur);
-        if (preview) {
-            preview.style.backgroundImage = `url('${savedBg}')`;
-            preview.style.display = 'block';
+
+    // ─── Migration: move old localStorage dataURL → disk via IPC, then drop the key ───
+    const legacyBg = localStorage.getItem('zapret-bg-image');
+    if (legacyBg && api.bgImageSave) {
+        try {
+            const m = /^data:(image\/[a-z+\-.]+);base64,(.+)$/i.exec(legacyBg);
+            if (m) {
+                const mime = m[1].toLowerCase();
+                const ext = mime === 'image/jpeg' ? 'jpg'
+                          : mime === 'image/png'  ? 'png'
+                          : mime === 'image/gif'  ? 'gif'
+                          : mime === 'image/webp' ? 'webp' : 'png';
+                const bin = atob(m[2]);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                await api.bgImageSave(bytes.buffer, ext);
+                localStorage.setItem('zapret-bg-has-image', '1');
+                console.log('[BG] migrated legacy localStorage image → disk');
+            }
+        } catch (e) {
+            console.warn('[BG] migration failed:', e);
         }
-    } else if (preview && savedBg) {
-        // Show preview thumbnail even if bg not applied (not in custom theme)
-        preview.style.backgroundImage = `url('${savedBg}')`;
-        preview.style.display = 'block';
+        try { localStorage.removeItem('zapret-bg-image'); } catch(e) {}
+    }
+
+    const hasBg = localStorage.getItem('zapret-bg-has-image') === '1';
+    const currentTheme = localStorage.getItem('zapret-theme') || 'dark';
+    if (hasBg) {
+        const dataUrl = await loadBgFromDiskIfNeeded();
+        if (dataUrl) {
+            if (currentTheme === 'custom') {
+                applyBackground(dataUrl, savedBlur);
+            }
+            if (preview) {
+                preview.style.backgroundImage = `url('${dataUrl}')`;
+                preview.style.display = 'block';
+            }
+        }
     }
 })();
 
 setOnClick('btn-bg-upload', () => el('bg-file-input').click());
 
-setOnChange('bg-file-input', (e) => {
+setOnChange('bg-file-input', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-        const dataUrl = ev.target.result;
-        const blur = parseInt(el('bg-blur-slider')?.value || '0', 10);
-        localStorage.setItem('zapret-bg-image', dataUrl);
-        applyBackground(dataUrl, blur);
-        const preview = el('bg-preview');
-        if (preview) {
-            preview.style.backgroundImage = `url('${dataUrl}')`;
-            preview.style.display = 'block';
+    try {
+        // Derive extension from filename (preferred) or MIME type
+        let ext = (file.name.split('.').pop() || '').toLowerCase();
+        if (!ext || ext.length > 5) {
+            const m = /^image\/([a-z0-9+\-.]+)$/i.exec(file.type || '');
+            ext = m ? m[1].toLowerCase() : 'png';
         }
-        log('✓ Фоновое изображение установлено');
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+        if (ext === 'jpeg') ext = 'jpg';
+
+        const arrBuf = await file.arrayBuffer();
+        const saved = await api.bgImageSave(arrBuf, ext);
+        if (!saved || !saved.success) {
+            alert('Не удалось сохранить картинку');
+            return;
+        }
+        // Build a fresh dataURL for immediate preview without an extra disk read
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const dataUrl = ev.target.result;
+            bgImageDataUrl = dataUrl;
+            const blur = parseInt(el('bg-blur-slider')?.value || '0', 10);
+            localStorage.setItem('zapret-bg-has-image', '1');
+            applyBackground(dataUrl, blur);
+            const preview = el('bg-preview');
+            if (preview) {
+                preview.style.backgroundImage = `url('${dataUrl}')`;
+                preview.style.display = 'block';
+            }
+            log(`✓ Фоновое изображение установлено (${(file.size/1024).toFixed(1)} KB)`);
+        };
+        reader.readAsDataURL(file);
+    } catch (err) {
+        console.error('[BG]', err);
+        alert('Ошибка загрузки картинки: ' + (err.message || err));
+    } finally {
+        e.target.value = '';
+    }
 });
 
-setOnClick('btn-bg-remove', () => {
-    localStorage.removeItem('zapret-bg-image');
+setOnClick('btn-bg-remove', async () => {
+    if (api.bgImageRemove) {
+        try { await api.bgImageRemove(); } catch (e) {}
+    }
+    bgImageDataUrl = null;
+    localStorage.removeItem('zapret-bg-has-image');
+    localStorage.removeItem('zapret-bg-image'); // legacy key, if any leftover
     localStorage.removeItem('zapret-bg-blur');
     localStorage.removeItem('zapret-overlay-color');
     localStorage.removeItem('zapret-overlay-opacity');
@@ -528,8 +620,7 @@ setOnInput('bg-blur-slider', (e) => {
     const valEl = el('bg-blur-value');
     if (valEl) valEl.textContent = blur + 'px';
     localStorage.setItem('zapret-bg-blur', blur);
-    const savedBg = localStorage.getItem('zapret-bg-image');
-    if (savedBg) applyBackground(savedBg, blur);
+    if (bgImageDataUrl) applyBackground(bgImageDataUrl, blur);
 });
 
 setOnInput('ui-blur-slider', (e) => {
@@ -598,8 +689,7 @@ setOnInput('glass-opacity-slider', (e) => {
 });
 
 // ─── Modals & Tools ───
-setOnClick('btn-version-manager', () => el('modal-versions').classList.remove('hidden'));
-setOnClick('setup-btn-download', () => el('modal-versions').classList.remove('hidden'));
+// btn-version-manager / setup-btn-download both wired below (openVersionManager refreshes content)
 setOnClick('setup-btn-select', handleSelectFolder);
 setOnClick('btn-select-folder', handleSelectFolder);
 setOnClick('btn-domains-manager', openDomainsManager);
@@ -666,6 +756,22 @@ setTimeout(connectAnalytics, 2000);
 // ─── App Updates ───
 let latestAppUpdateUrl = null;
 
+// Wire progress events once — fired by main during downloadAppUpdate or when reopening modal mid-flight.
+// Uses its own IPC channel (`app-update-progress`) so it doesn't collide with zapret version downloads.
+if (api.onAppUpdateProgress) {
+    api.onAppUpdateProgress((data) => {
+        const wrap = el('update-progress-wrap');
+        if (!wrap) return;
+        wrap.classList.remove('hidden');
+        el('update-progress-fill').style.width = data.percent + '%';
+        el('update-progress-percent').textContent = data.percent + '%';
+        el('update-progress-text').textContent = data.text;
+        if (data.percent > 0 && data.percent < 100) {
+            el('btn-app-download-now').classList.add('hidden');
+        }
+    });
+}
+
 setOnClick('btn-app-update', async () => {
     console.log('[UI] Update button clicked');
     // Remove pulse once user opens the modal
@@ -675,7 +781,21 @@ setOnClick('btn-app-update', async () => {
     el('update-version-label').textContent = 'Проверка обновлений...';
     el('update-progress-wrap').classList.add('hidden');
     el('btn-app-download-now').classList.add('hidden');
-    
+
+    // If a download is already in flight, attach to it instead of starting another
+    try {
+        const state = await api.getUpdateDownloadState();
+        if (state && state.active) {
+            el('update-version-label').innerHTML = `<div style="color:var(--accent); font-weight:600;">Идёт загрузка обновления…</div>`;
+            el('update-progress-wrap').classList.remove('hidden');
+            el('update-progress-fill').style.width = state.percent + '%';
+            el('update-progress-percent').textContent = state.percent + '%';
+            el('update-progress-text').textContent = state.text || 'Загрузка...';
+            el('btn-app-download-now').classList.add('hidden');
+            return;
+        }
+    } catch (e) {}
+
     try {
         console.log('[UI] Calling api.checkAppUpdate()...');
         const res = await api.checkAppUpdate();
@@ -735,31 +855,58 @@ setInterval(checkAppUpdateSilent, 5 * 60 * 1000);
 
 setOnClick('btn-app-download-now', async () => {
     if (!latestAppUpdateUrl) return;
-    
+
     el('btn-app-download-now').classList.add('hidden');
     el('update-progress-wrap').classList.remove('hidden');
-    
-    api.onDownloadProgress((data) => {
-        el('update-progress-fill').style.width = data.percent + '%';
-        el('update-progress-percent').textContent = data.percent + '%';
-        el('update-progress-text').textContent = data.text;
-    });
-    
-    const success = await api.downloadAppUpdate(latestAppUpdateUrl);
-    if (!success) {
-        alert('Ошибка при загрузке обновления');
-        el('btn-app-download-now').classList.remove('hidden');
-        el('update-progress-wrap').classList.add('hidden');
+    el('update-progress-fill').style.width = '0%';
+    el('update-progress-percent').textContent = '0%';
+    el('update-progress-text').textContent = 'Подключение...';
+
+    const result = await api.downloadAppUpdate(latestAppUpdateUrl);
+    // Main returns true on success (app quits to launch installer), false on error,
+    // or { alreadyDownloading: true } if a previous download was still in flight.
+    if (result === true) return; // app will quit shortly
+    if (result && result.alreadyDownloading) {
+        // Progress events keep flowing; nothing to do
+        return;
     }
+    alert('Ошибка при загрузке обновления');
+    el('btn-app-download-now').classList.remove('hidden');
+    el('update-progress-wrap').classList.add('hidden');
 });
 
 // Initialization
+async function checkForOrphanZapret() {
+    if (!api.detectOrphanZapret) return;
+    try {
+        const res = await api.detectOrphanZapret();
+        if (!res || !res.alive || res.hasOurProcess) return;
+        // winws живёт, но мы его не запускали — спрашиваем юзера
+        const choice = confirm(
+            'Обнаружен уже запущенный обход (winws/dvtws).\n\n' +
+            'OK — продолжать с ним (приложение начнёт показывать его как активный).\n' +
+            'Отмена — остановить его и начать с чистого листа.'
+        );
+        if (choice) {
+            await api.adoptOrphanZapret();
+            setStrategyStatus(true, '(внешний обход)');
+            log('✓ Подключено к уже запущенному обходу');
+        } else {
+            await api.killOrphanZapret();
+            log('■ Внешний обход остановлен');
+        }
+    } catch (e) {
+        console.warn('[ORPHAN] detection failed:', e);
+    }
+}
+
 async function init() {
     if (currentFolder) {
         setupScreen.style.display = 'none';
         mainApp.style.display = 'flex';
         await loadStrategies();
         checkAutostart();
+        await checkForOrphanZapret();
     } else {
         setupScreen.style.display = 'flex';
         mainApp.style.display = 'none';
@@ -791,6 +938,23 @@ async function init() {
     if (api.onTrayStartStrategy) {
         api.onTrayStartStrategy(() => {
             if (!isStrategyRunning) startSelectedStrategy();
+        });
+    }
+
+    if (api.onZapretLog) {
+        api.onZapretLog((line) => {
+            log(line);
+        });
+    }
+
+    if (api.onZapretExited) {
+        api.onZapretExited(({ code, strategy }) => {
+            // Process died on its own (not stopped by us). Sync UI.
+            if (isStrategyRunning) {
+                const name = (strategy || '').replace(/\.bat$/i, '');
+                log(`✗ Обход завершился (код ${code})${name ? ': ' + name : ''}`);
+                setStrategyStatus(false, null);
+            }
         });
     }
 }
@@ -853,23 +1017,36 @@ function selectStrategy(name, divElement) {
 }
 
 // Start / Stop Strategy
+let connectInFlight = false;
 async function startSelectedStrategy() {
     if (!selectedStrategy) return;
-    if (isStrategyRunning) {
-        log('■ Остановка обхода...');
-        await api.stopStrategy();
-        setStrategyStatus(false, null);
-    } else {
-        const name = selectedStrategy.replace(/\.bat$/i,'');
-        log(`▶ Запуск обхода: ${name}...`);
-        const res = await api.startStrategy(currentFolder, selectedStrategy);
-        if (res.success) {
-            localStorage.setItem('last-strategy', selectedStrategy);
-            setStrategyStatus(true, selectedStrategy);
-            log(`✓ Подключено · ${name}`);
+    if (connectInFlight) return; // ignore spam clicks while a transition is in progress
+    connectInFlight = true;
+    const sideBtn = el('btn-start-strategy');
+    const mainBtn = el('btn-connect-main');
+    if (sideBtn) sideBtn.disabled = true;
+    if (mainBtn) mainBtn.classList.add('busy');
+    try {
+        if (isStrategyRunning) {
+            log('■ Остановка обхода...');
+            await api.stopStrategy();
+            setStrategyStatus(false, null);
         } else {
-            log(`✗ Ошибка запуска: ${res.error || 'неизвестная ошибка'}`);
+            const name = selectedStrategy.replace(/\.bat$/i,'');
+            log(`▶ Запуск обхода: ${name}...`);
+            const res = await api.startStrategy(currentFolder, selectedStrategy);
+            if (res.success) {
+                localStorage.setItem('last-strategy', selectedStrategy);
+                setStrategyStatus(true, selectedStrategy);
+                log(`✓ Подключено · ${name}`);
+            } else {
+                log(`✗ Ошибка запуска: ${res.error || 'неизвестная ошибка'}`);
+            }
         }
+    } finally {
+        connectInFlight = false;
+        if (sideBtn) sideBtn.disabled = false;
+        if (mainBtn) mainBtn.classList.remove('busy');
     }
 }
 
@@ -1000,6 +1177,56 @@ function formatUptime(ms) {
     return `${sec}с`;
 }
 
+// ─── Ping History (sparkline) ───
+const PING_HISTORY_MAX = 20; // ~60s at 3s interval
+const pingHistory = {}; // { 'YouTube': [55, 60, null, 58, ...] }
+
+function recordPing(name, ms) {
+    if (!pingHistory[name]) pingHistory[name] = [];
+    pingHistory[name].push(ms);
+    if (pingHistory[name].length > PING_HISTORY_MAX) pingHistory[name].shift();
+}
+
+function renderSparkline(values) {
+    const W = 80, H = 18;
+    const filled = values.filter(v => v != null);
+    if (filled.length < 2) {
+        return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"></svg>`;
+    }
+    const max = Math.max(...filled);
+    const min = Math.min(...filled);
+    const range = Math.max(max - min, 1);
+    const step = W / (values.length - 1);
+    let prev = null;
+    const segments = [];
+    let current = [];
+    values.forEach((v, i) => {
+        if (v == null) {
+            if (current.length) segments.push(current);
+            current = [];
+            return;
+        }
+        const x = i * step;
+        const y = H - 2 - ((v - min) / range) * (H - 4);
+        current.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    });
+    if (current.length) segments.push(current);
+    const polylines = segments
+        .filter(seg => seg.length >= 2)
+        .map(seg => `<polyline points="${seg.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`)
+        .join('');
+    // Last point dot
+    const lastIdx = values.length - 1;
+    const lastVal = values[lastIdx];
+    let dot = '';
+    if (lastVal != null) {
+        const x = lastIdx * step;
+        const y = H - 2 - ((lastVal - min) / range) * (H - 4);
+        dot = `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.6" fill="currentColor"/>`;
+    }
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${polylines}${dot}</svg>`;
+}
+
 // ─── Ping Grid Rendering ───
 function renderPingGrid() {
     const container = el('pings-grid');
@@ -1010,6 +1237,7 @@ function renderPingGrid() {
             <button class="status-box-del" onclick="removePingTarget(${i})" title="Удалить">×</button>
             <div class="status-box-name" title="${t.host}">${t.name}</div>
             <div class="status-box-value" id="ping-val-${i}" style="color:var(--text-3)">—</div>
+            <div class="ping-spark" id="ping-spark-${i}"></div>
         </div>`).join('');
 
     const addBtnHtml = `
@@ -1118,6 +1346,8 @@ async function startPings() {
 function stopPings() {
     if (pingInterval) clearInterval(pingInterval);
     pingInterval = null;
+    // Clear history so the next session starts with a fresh sparkline
+    Object.keys(pingHistory).forEach(k => delete pingHistory[k]);
 }
 
 async function updatePingValues() {
@@ -1125,10 +1355,17 @@ async function updatePingValues() {
     const pings = await api.getPings(pingTargets);
     pingTargets.forEach((t, i) => {
         const valEl = el(`ping-val-${i}`);
-        if (!valEl) return;
+        const sparkEl = el(`ping-spark-${i}`);
         const ms = pings[t.name];
-        valEl.style.color = ms != null ? 'var(--success)' : 'var(--error)';
-        valEl.textContent  = ms != null ? ms + ' ms' : '—';
+        recordPing(t.name, ms);
+        if (valEl) {
+            valEl.style.color = ms != null ? 'var(--success)' : 'var(--error)';
+            valEl.textContent = ms != null ? ms + ' ms' : '—';
+        }
+        if (sparkEl) {
+            sparkEl.style.color = ms != null ? 'var(--success)' : 'var(--error)';
+            sparkEl.innerHTML = renderSparkline(pingHistory[t.name]);
+        }
     });
 }
 
@@ -1136,8 +1373,8 @@ async function updatePingValues() {
 async function updatePings() { await updatePingValues(); }
 
 // Version Manager
-el('btn-version-manager').onclick = openVersionManager;
-el('setup-btn-download').onclick = openVersionManager;
+setOnClick('btn-version-manager', openVersionManager);
+setOnClick('setup-btn-download', openVersionManager);
 
 async function openVersionManager() {
     el('modal-versions').classList.remove('hidden');
@@ -1370,16 +1607,29 @@ setOnInput('search-strategy', (e) => {
 });
 
 // Logs
+const LOG_MAX_ENTRIES = 500;
 function log(msg) {
     const container = el('logs-container');
+    if (!container) return;
     const div = document.createElement('div');
-    const text = msg.toLowerCase();
+    const text = String(msg).toLowerCase();
     div.className = 'log-entry' +
         (text.includes('✓') || text.includes('успеш') || text.includes('[ok]') ? ' log-ok' : '') +
         (text.includes('✗') || text.includes('ошибка') || text.includes('[err]') ? ' log-err' : '');
     const time = new Date().toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
-    div.innerHTML = `<span style="color:var(--text-3); margin-right:8px;">${time}</span>${msg}`;
+    // Use textContent (not innerHTML) for the user-supplied message so winws stdout
+    // can't inject markup into our DOM. The timestamp prefix stays as a real element.
+    const timeSpan = document.createElement('span');
+    timeSpan.style.color = 'var(--text-3)';
+    timeSpan.style.marginRight = '8px';
+    timeSpan.textContent = time;
+    div.appendChild(timeSpan);
+    div.appendChild(document.createTextNode(String(msg)));
     container.appendChild(div);
+    // Cap log size — winws stdout can flood thousands of lines on a long uptime
+    while (container.childElementCount > LOG_MAX_ENTRIES) {
+        container.removeChild(container.firstChild);
+    }
     container.scrollTop = container.scrollHeight;
 }
 
