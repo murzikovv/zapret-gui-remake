@@ -5,7 +5,7 @@ const net = require('net');
 const { spawn, exec, execSync } = require('child_process');
 const https = require('https');
 
-const APP_VERSION = '1.2.7b';
+const APP_VERSION = '1.2.8';
 const UPDATE_URL = 'https://raw.githubusercontent.com/murzikovv/zapret-gui-remake/main/version.json';
 
 ipcMain.handle('check-app-update', async () => {
@@ -39,35 +39,70 @@ ipcMain.handle('check-app-update', async () => {
     });
 });
 
+// Track update download state so reopening the modal shows live progress
+// rather than starting a second concurrent download on top of the first.
+let updateDownloadState = { active: false, percent: 0, text: '', url: null };
+
+function broadcastUpdateProgress() {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app-update-progress', {
+            percent: updateDownloadState.percent,
+            text: updateDownloadState.text
+        });
+    }
+}
+
+ipcMain.handle('get-update-download-state', () => updateDownloadState);
+
 ipcMain.handle('download-app-update', async (event, url) => {
+    if (updateDownloadState.active) {
+        // Don't restart; tell UI to attach to the in-flight download.
+        return { alreadyDownloading: true };
+    }
+    updateDownloadState = { active: true, percent: 0, text: 'Подключение...', url };
+
     return new Promise((resolve) => {
         const tempPath = path.join(app.getPath('temp'), 'ZapretGUISetup.exe');
         const file = fs.createWriteStream(tempPath);
 
+        const failed = (reason) => {
+            try { file.close(); } catch (e) {}
+            updateDownloadState = { active: false, percent: 0, text: '', url: null };
+            broadcastUpdateProgress();
+            console.error('[UPDATE DOWNLOAD]', reason);
+            resolve(false);
+        };
+
         const handleRes = (res) => {
             if (res.statusCode === 301 || res.statusCode === 302) {
-                https.get(res.headers.location, handleRes);
+                https.get(res.headers.location, { headers: { 'User-Agent': 'ZapretGUI-App' } }, handleRes).on('error', failed);
                 return;
             }
-            const total = parseInt(res.headers['content-length'], 10);
+            if (res.statusCode !== 200) return failed('HTTP ' + res.statusCode);
+            const total = parseInt(res.headers['content-length'], 10) || 0;
             let current = 0;
             res.on('data', (chunk) => {
                 current += chunk.length;
-                mainWindow.webContents.send('download-progress', {
-                    percent: Math.round(current / total * 100),
-                    text: 'Загрузка обновления...'
-                });
+                updateDownloadState.percent = total ? Math.round(current / total * 100) : 0;
+                updateDownloadState.text = total
+                    ? `Загрузка обновления... ${(current / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} МБ`
+                    : 'Загрузка обновления...';
+                broadcastUpdateProgress();
             });
             res.pipe(file);
             file.on('finish', () => {
                 file.close();
+                updateDownloadState.percent = 100;
+                updateDownloadState.text = 'Запуск установщика...';
+                broadcastUpdateProgress();
                 exec(`start "" "${tempPath}"`);
                 isQuitting = true;
                 app.quit();
                 resolve(true);
             });
+            res.on('error', () => failed('response error'));
         };
-        https.get(url, handleRes).on('error', () => resolve(false));
+        https.get(url, { headers: { 'User-Agent': 'ZapretGUI-App' } }, handleRes).on('error', failed);
     });
 });
 
@@ -153,10 +188,14 @@ let isQuitting = false;
 // ─── Robust icon path lookup (used both for window and tray) ───
 function getIconPath() {
     const pathsToTry = [
-        path.join(app.getAppPath(), 'assets', 'icon.png'),
-        path.join(__dirname, '..', 'assets', 'icon.png'),
+        // Unpacked assets (packaged build, see asarUnpack in package.json)
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'icon.png'),
+        // Generic resourcesPath fallbacks
         path.join(process.resourcesPath, 'assets', 'icon.png'),
-        path.join(process.resourcesPath, 'icon.png')
+        path.join(process.resourcesPath, 'icon.png'),
+        // Inside-asar / dev run
+        path.join(app.getAppPath(), 'assets', 'icon.png'),
+        path.join(__dirname, '..', 'assets', 'icon.png')
     ];
     for (const p of pathsToTry) {
         if (fs.existsSync(p)) return p;
@@ -282,23 +321,88 @@ function updateTrayStatus() {
             running: runningStrategyName
         });
     }
+    applyTrayState(!!runningStrategyName);
 }
 
 let runningStrategyName = null; // Track name for tray
+let cachedTrayBase = null;
+
+function getTrayBaseImage() {
+    if (cachedTrayBase) return cachedTrayBase;
+    const iconPath = getIconPath();
+    if (!iconPath) return null;
+    cachedTrayBase = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+    return cachedTrayBase;
+}
+
+// Generate a small overlay badge (filled circle, green=running, gray=idle).
+// Used for Tray.setImage (composited with base) and BrowserWindow.setOverlayIcon.
+function makeStatusBadge(active, size = 16) {
+    const buf = Buffer.alloc(size * size * 4);
+    const [r, g, b] = active ? [74, 222, 128] : [100, 100, 100];
+    const cx = (size - 1) / 2;
+    const cy = (size - 1) / 2;
+    const radius = (size / 2) - 1;
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const d = Math.hypot(x - cx, y - cy);
+            const i = (y * size + x) * 4;
+            if (d <= radius) {
+                // BGRA on Windows
+                buf[i] = b; buf[i+1] = g; buf[i+2] = r; buf[i+3] = 255;
+            } else if (d <= radius + 1) {
+                const alpha = Math.round(255 * (radius + 1 - d));
+                buf[i] = b; buf[i+1] = g; buf[i+2] = r; buf[i+3] = alpha;
+            } else {
+                buf[i] = 0; buf[i+1] = 0; buf[i+2] = 0; buf[i+3] = 0;
+            }
+        }
+    }
+    return nativeImage.createFromBuffer(buf, { width: size, height: size });
+}
+
+function applyTrayState(running) {
+    if (tray) {
+        // Use icon-active.png / icon-idle.png if user dropped them into assets/, else use the shared base
+        const stateFile = running ? 'icon-active.png' : 'icon-idle.png';
+        const tryPaths = [
+            path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', stateFile),
+            path.join(__dirname, '..', 'assets', stateFile),
+            path.join(app.getAppPath(), 'assets', stateFile)
+        ];
+        let img = null;
+        for (const p of tryPaths) {
+            if (fs.existsSync(p)) { img = nativeImage.createFromPath(p).resize({ width: 16, height: 16 }); break; }
+        }
+        if (!img) img = getTrayBaseImage();
+        if (img) tray.setImage(img);
+        const stratLabel = runningStrategyName ? runningStrategyName.replace(/\.bat$/i, '') : '';
+        tray.setToolTip(running
+            ? `Zapret GUI • Подключено${stratLabel ? ': ' + stratLabel : ''}`
+            : 'Zapret GUI • Отключено');
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        try {
+            mainWindow.setOverlayIcon(running ? makeStatusBadge(true) : null, running ? 'Active' : '');
+        } catch (e) {
+            // setOverlayIcon may fail on some Windows configurations; non-fatal
+        }
+    }
+}
 
 function createTray() {
     try {
         if (tray) return;
 
-        const iconPath = getIconPath();
-        if (!iconPath) {
+        const baseImage = getTrayBaseImage();
+        if (!baseImage) {
             console.warn('[TRAY] Icon not found in any expected location');
             return;
         }
 
-        const image = nativeImage.createFromPath(iconPath);
-        tray = new Tray(image.resize({ width: 16, height: 16 }));
+        tray = new Tray(baseImage);
         tray.setToolTip('Zapret GUI');
+        applyTrayState(false);
 
         tray.on('click', () => {
             toggleTrayWindow();
@@ -318,7 +422,12 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
+    // Ensures the taskbar groups by our AppUserModelID and shows the right icon on Windows
+    if (process.platform === 'win32') {
+        try { app.setAppUserModelId('com.murzikov.zapretgui'); } catch (e) {}
+    }
     createWindow();
+    selfHealAutostart();
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -379,6 +488,92 @@ ipcMain.handle('list-strategies', async (event, folderPath) => {
     }
 });
 
+function sendZapretLog(line) {
+    if (!line) return;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('zapret-log', line);
+    }
+}
+
+// ─── winws watchdog ───
+// Polls every 5s while a strategy is logically "running". If none of the known
+// zapret binaries are alive, the user's bypass crashed externally and we sync UI.
+let winwsWatchdog = null;
+const ZAPRET_BINS = ['winws.exe', 'dvtws.exe', 'nfqws.exe', 'zapret.exe'];
+
+function isAnyZapretBinaryRunning() {
+    return new Promise(resolve => {
+        // /FI "IMAGENAME eq X" returns "INFO: No tasks..." with exit 0 when absent.
+        // Easier: list all our names and check stdout.
+        exec('tasklist /NH /FO CSV', { windowsHide: true }, (err, stdout) => {
+            if (err) return resolve(true); // fail open — don't kill UI state on transient tasklist error
+            const lower = stdout.toLowerCase();
+            for (const bin of ZAPRET_BINS) {
+                if (lower.includes(bin)) return resolve(true);
+            }
+            resolve(false);
+        });
+    });
+}
+
+function startWinwsWatchdog() {
+    if (winwsWatchdog) return;
+    // Grace period: winws may take a moment to appear after the .bat launches it.
+    let graceTicksLeft = 3;
+    winwsWatchdog = setInterval(async () => {
+        if (!runningStrategyName) {
+            stopWinwsWatchdog();
+            return;
+        }
+        const alive = await isAnyZapretBinaryRunning();
+        if (!alive) {
+            if (graceTicksLeft-- > 0) return;
+            console.log('[WATCHDOG] No zapret binaries detected — syncing UI to stopped state');
+            const exitedName = runningStrategyName;
+            activeProcess = null;
+            runningStrategyName = null;
+            updateTrayStatus();
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('zapret-exited', { code: -1, strategy: exitedName });
+            }
+            stopWinwsWatchdog();
+        } else {
+            graceTicksLeft = 3;
+        }
+    }, 5000);
+}
+
+function stopWinwsWatchdog() {
+    if (winwsWatchdog) {
+        clearInterval(winwsWatchdog);
+        winwsWatchdog = null;
+    }
+}
+
+function attachProcessStreams(proc, strategyFile) {
+    if (!proc || !proc.stdout || !proc.stderr) return;
+    let stdoutBuf = '';
+    let stderrBuf = '';
+    const drain = (chunk, isErr) => {
+        const text = chunk.toString('utf-8');
+        let buf = (isErr ? stderrBuf : stdoutBuf) + text;
+        const lines = buf.split(/\r?\n/);
+        const tail = lines.pop();
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed) sendZapretLog((isErr ? '! ' : '') + trimmed);
+        }
+        if (isErr) stderrBuf = tail; else stdoutBuf = tail;
+    };
+    proc.stdout.on('data', d => drain(d, false));
+    proc.stderr.on('data', d => drain(d, true));
+    // NOTE: deliberately no proc.on('exit') reset of runningStrategyName.
+    // Flowseal's .bat strategies use `start winws.exe ...` and exit immediately,
+    // leaving winws running independently. Treating .bat exit as "process died"
+    // would falsely reset the UI to "disconnected" while winws is still active.
+    // winws lifecycle is tracked separately by the watchdog below.
+}
+
 ipcMain.handle('start-strategy', async (event, { folderPath, strategyFile }) => {
     killActiveProcess();
     await cleanupZapretBinaries();
@@ -387,17 +582,21 @@ ipcMain.handle('start-strategy', async (event, { folderPath, strategyFile }) => 
     console.log(`Starting strategy: ${strategyFile}`);
 
     try {
-        // Direct spawn is more reliable for tracking PID
+        // Direct spawn is more reliable for tracking PID.
+        // Pipe stdout/stderr so winws output reaches the in-app log.
         activeProcess = spawn('cmd.exe', ['/c', fullPath], {
             cwd: folderPath,
             detached: false,
             windowsHide: true,
-            stdio: 'ignore'
+            stdio: ['ignore', 'pipe', 'pipe']
         });
+
+        attachProcessStreams(activeProcess, strategyFile);
 
         console.log(`Spawned PID: ${activeProcess.pid}`);
         runningStrategyName = strategyFile;
         updateTrayStatus();
+        startWinwsWatchdog();
         return { success: true, pid: activeProcess.pid };
     } catch (e) {
         console.error("Spawn error:", e);
@@ -406,6 +605,7 @@ ipcMain.handle('start-strategy', async (event, { folderPath, strategyFile }) => 
 });
 
 async function stopStrategyAndCleanup() {
+    stopWinwsWatchdog();
     killActiveProcess();
     await cleanupZapretBinaries();
     runningStrategyName = null;
@@ -429,6 +629,30 @@ function cleanupZapretBinaries() {
         exec(cmd, () => resolve(true));
     });
 }
+
+// Renderer asks at boot whether any zapret binaries are already running.
+// If so, UI shows a banner offering to adopt the session (mark as running) or kill it.
+ipcMain.handle('detect-orphan-zapret', async () => {
+    const alive = await isAnyZapretBinaryRunning();
+    return { alive, hasOurProcess: !!runningStrategyName };
+});
+
+ipcMain.handle('kill-orphan-zapret', async () => {
+    stopWinwsWatchdog();
+    await cleanupZapretBinaries();
+    runningStrategyName = null;
+    activeProcess = null;
+    updateTrayStatus();
+    return true;
+});
+
+// Adopt a pre-existing winws session — UI labels it as running without a known strategy name.
+ipcMain.handle('adopt-orphan-zapret', async () => {
+    runningStrategyName = '(внешний обход)';
+    updateTrayStatus();
+    startWinwsWatchdog();
+    return true;
+});
 
 ipcMain.handle('check-connection', async () => {
     const checkUrl = (hostname) => new Promise((resolve) => {
@@ -477,29 +701,30 @@ ipcMain.handle('get-pings', async (event, targets) => {
     ];
 
     const pingHost = (host) => new Promise((resolve) => {
-        const start = process.hrtime();
+        const start = process.hrtime.bigint();
         const socket = new net.Socket();
+        let done = false;
+        const finish = (val) => {
+            if (done) return;
+            done = true;
+            socket.destroy();
+            resolve(val);
+        };
         socket.setTimeout(2000);
         socket.on('connect', () => {
-            const diff = process.hrtime(start);
-            const ms = Math.round((diff[0] * 1000) + (diff[1] / 1000000));
-            socket.destroy();
-            let calibrated = ms;
-            if (ms > 100) calibrated = Math.round(ms * 0.6);
-            else calibrated = Math.round(ms - 20);
-            resolve(Math.max(15, calibrated));
+            const ns = Number(process.hrtime.bigint() - start);
+            finish(Math.max(1, Math.round(ns / 1e6)));
         });
-        socket.on('error', () => { socket.destroy(); resolve(null); });
-        socket.on('timeout', () => { socket.destroy(); resolve(null); });
+        socket.on('error', () => finish(null));
+        socket.on('timeout', () => finish(null));
         socket.connect(443, host);
     });
 
     try {
-        const result = {};
-        for (const t of targetList) {
-            result[t.name] = await pingHost(t.host);
-        }
-        console.log('[PINGS]', Object.entries(result).map(([k,v]) => `${k}: ${v}ms`).join(', '));
+        // Ping all targets in parallel — faster and the SYN handshake cost stays comparable.
+        const entries = await Promise.all(targetList.map(async t => [t.name, await pingHost(t.host)]));
+        const result = Object.fromEntries(entries);
+        console.log('[PINGS]', entries.map(([k,v]) => `${k}: ${v}ms`).join(', '));
         return result;
     } catch (e) {
         console.error('[PING ERROR]', e);
@@ -522,6 +747,56 @@ ipcMain.handle('app-force-quit', () => {
     app.quit();
 });
 
+// ─── Background image storage (on-disk, avoids localStorage quota) ───
+const BG_IMAGE_DIR = path.join(app.getPath('userData'), 'bg-images');
+if (!fs.existsSync(BG_IMAGE_DIR)) fs.mkdirSync(BG_IMAGE_DIR, { recursive: true });
+
+const BG_ALLOWED_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'];
+const BG_MIME = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp'
+};
+
+function listBgFiles() {
+    try {
+        return fs.readdirSync(BG_IMAGE_DIR).filter(f => f.startsWith('background.'));
+    } catch (e) { return []; }
+}
+
+function removeAllBgFiles() {
+    for (const f of listBgFiles()) {
+        try { fs.unlinkSync(path.join(BG_IMAGE_DIR, f)); } catch (e) {}
+    }
+}
+
+ipcMain.handle('bg-image-save', async (event, { buffer, ext }) => {
+    const safeExt = String(ext || 'png').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!BG_ALLOWED_EXTS.includes(safeExt)) return { success: false, error: 'unsupported ext' };
+    removeAllBgFiles();
+    const target = path.join(BG_IMAGE_DIR, `background.${safeExt}`);
+    fs.writeFileSync(target, Buffer.from(buffer));
+    return { success: true, ext: safeExt, bytes: buffer.byteLength || buffer.length || 0 };
+});
+
+ipcMain.handle('bg-image-load', async () => {
+    const files = listBgFiles();
+    if (!files.length) return null;
+    const f = files[0];
+    const ext = f.split('.').pop().toLowerCase();
+    const mime = BG_MIME[ext] || 'application/octet-stream';
+    try {
+        const buf = fs.readFileSync(path.join(BG_IMAGE_DIR, f));
+        return `data:${mime};base64,${buf.toString('base64')}`;
+    } catch (e) {
+        return null;
+    }
+});
+
+ipcMain.handle('bg-image-remove', async () => {
+    removeAllBgFiles();
+    return true;
+});
+
 // File Operations
 ipcMain.handle('read-file', async (event, filePath) => {
     try {
@@ -540,43 +815,57 @@ ipcMain.handle('save-file', async (event, { filePath, content }) => {
 });
 
 // Autostart
-ipcMain.handle('toggle-autostart', (event, { enable, minimizeOnStart }) => {
-    let exePath = process.execPath;
-    let args = [];
-    
-    // Если приложение запущено из исходников (npm start), передаем путь к проекту
+const AUTOSTART_SETTINGS_PATH = path.join(app.getPath('userData'), 'autostart_settings.json');
+
+function readAutostartPrefs() {
+    try {
+        if (fs.existsSync(AUTOSTART_SETTINGS_PATH)) {
+            return JSON.parse(fs.readFileSync(AUTOSTART_SETTINGS_PATH, 'utf-8')) || {};
+        }
+    } catch (e) {}
+    return {};
+}
+
+function applyAutostart(enable, minimizeOnStart) {
+    // In dev mode, refuse to register autostart — it would point to node_modules/electron.exe
     if (!app.isPackaged) {
-        args.push(app.getAppPath());
+        console.warn('[AUTOSTART] Skipped: dev mode (run packaged build to test autostart)');
+        // Clear any stale entry left over from a previous packaged install
+        app.setLoginItemSettings({ openAtLogin: false });
+        return false;
     }
-    
+    const args = [];
     if (minimizeOnStart) args.push('--hidden');
-
     app.setLoginItemSettings({
-        openAtLogin: enable,
-        path: exePath,
-        args: args
+        openAtLogin: !!enable,
+        path: process.execPath,
+        args
     });
+    return !!enable;
+}
 
-    // Store localized settings
-    const settings = { enable, minimizeOnStart };
-    const settingsPath = path.join(app.getPath('userData'), 'autostart_settings.json');
-    fs.writeFileSync(settingsPath, JSON.stringify(settings));
-
-    return enable;
+ipcMain.handle('toggle-autostart', (event, { enable, minimizeOnStart }) => {
+    const actual = applyAutostart(enable, minimizeOnStart);
+    fs.writeFileSync(AUTOSTART_SETTINGS_PATH, JSON.stringify({ enable: actual, minimizeOnStart: !!minimizeOnStart }));
+    return actual;
 });
 
+// Self-heal: on every packaged launch, re-write login item with current exe path.
+// This fixes the case where autostart was set up from a previous install or dev run
+// and now points to a stale electron.exe / old location.
+function selfHealAutostart() {
+    if (!app.isPackaged) return;
+    const prefs = readAutostartPrefs();
+    if (!prefs.enable) return;
+    applyAutostart(true, !!prefs.minimizeOnStart);
+    console.log('[AUTOSTART] Refreshed login item path to', process.execPath);
+}
+
 ipcMain.handle('check-autostart', () => {
-    const settingsPath = path.join(app.getPath('userData'), 'autostart_settings.json');
-    let minimizeOnStart = false;
-    if (fs.existsSync(settingsPath)) {
-        try {
-            const data = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-            minimizeOnStart = !!data.minimizeOnStart;
-        } catch (e) { }
-    }
+    const prefs = readAutostartPrefs();
     return {
         enable: app.getLoginItemSettings().openAtLogin,
-        minimizeOnStart
+        minimizeOnStart: !!prefs.minimizeOnStart
     };
 });
 
@@ -882,8 +1171,9 @@ ipcMain.handle('save-list', async (event, { folderPath, filename, content }) => 
             await cleanupZapretBinaries();
             setTimeout(() => {
                 activeProcess = spawn('cmd.exe', ['/c', path.join(_folder, _strategy)], {
-                    cwd: _folder, detached: false, windowsHide: true, stdio: 'ignore'
+                    cwd: _folder, detached: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
                 });
+                attachProcessStreams(activeProcess, _strategy);
                 runningStrategyName = _strategy;
                 updateTrayStatus();
             }, 1000);

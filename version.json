@@ -1,5 +1,5 @@
 {
-  "version": "1.2.7b",
+  "version": "1.2.8",
   "url": "https://github.com/murzikovv/zapret-gui-remake/releases/latest/download/ZapretGUISetup.exe",
-  "changelog": "фикс + фичи"
+  "changelog": "оптимизация траффика, улучшение общей пропускной способности, правильное отображение пинга"
 }

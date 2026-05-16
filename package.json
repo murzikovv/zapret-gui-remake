@@ -1,11 +1,12 @@
 {
   "name": "zapret-gui-remake",
-  "version": "1.0.0",
+  "version": "1.2.8",
   "description": "Remake of Zapret GUI in Vanilla JS",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win"
+    "build": "electron-builder --win",
+    "release": "node release_helper.js"
   },
   "author": "Murzikov",
   "license": "ISC",
@@ -20,11 +21,15 @@
     "appId": "com.murzikov.zapretgui",
     "productName": "Zapret GUI",
     "icon": "assets/icon.png",
+    "asarUnpack": [
+      "assets/**"
+    ],
     "directories": {
       "output": "dist"
     },
     "win": {
       "target": "nsis",
+      "icon": "assets/icon.png",
       "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
@@ -33,6 +38,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Zapret GUI",
+      "artifactName": "ZapretGUISetup.exe",
       "include": "build/installer.nsh"
     }
   }
