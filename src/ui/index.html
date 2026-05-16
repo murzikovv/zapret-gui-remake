@@ -549,7 +549,8 @@
             </div>
             <div class="modal-footer">
                 <button class="btn hidden" id="btn-app-download-now">Скачать и обновить</button>
-                <button class="btn-secondary" onclick="document.getElementById('modal-app-update').classList.add('hidden')">Закрыть</button>
+                <button class="btn-secondary hidden" id="btn-app-download-cancel" style="color:var(--error); border-color:var(--error);">Отменить загрузку</button>
+                <button class="btn-secondary" id="btn-app-update-close" onclick="document.getElementById('modal-app-update').classList.add('hidden')">Закрыть</button>
             </div>
         </div>
     </div>

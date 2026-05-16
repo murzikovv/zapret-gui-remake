@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkAppUpdate: () => ipcRenderer.invoke('check-app-update'),
     downloadAppUpdate: (url) => ipcRenderer.invoke('download-app-update', url),
     getUpdateDownloadState: () => ipcRenderer.invoke('get-update-download-state'),
+    cancelAppUpdateDownload: () => ipcRenderer.invoke('cancel-app-update-download'),
 
     // Live zapret/winws output
     onZapretLog: (callback) => ipcRenderer.on('zapret-log', (event, line) => callback(line)),

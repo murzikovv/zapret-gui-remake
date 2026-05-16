@@ -5,7 +5,7 @@ const net = require('net');
 const { spawn, exec, execSync } = require('child_process');
 const https = require('https');
 
-const APP_VERSION = '1.2.8b';
+const APP_VERSION = '1.2.8c';
 const UPDATE_URL = 'https://raw.githubusercontent.com/murzikovv/zapret-gui-remake/main/version.json';
 
 ipcMain.handle('check-app-update', async () => {
@@ -42,17 +42,43 @@ ipcMain.handle('check-app-update', async () => {
 // Track update download state so reopening the modal shows live progress
 // rather than starting a second concurrent download on top of the first.
 let updateDownloadState = { active: false, percent: 0, text: '', url: null };
+let activeUpdateRequest = null;
+let activeUpdateFileStream = null;
+let activeUpdateTempPath = null;
 
 function broadcastUpdateProgress() {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('app-update-progress', {
             percent: updateDownloadState.percent,
-            text: updateDownloadState.text
+            text: updateDownloadState.text,
+            active: updateDownloadState.active
         });
     }
 }
 
 ipcMain.handle('get-update-download-state', () => updateDownloadState);
+
+ipcMain.handle('cancel-app-update-download', async () => {
+    if (!updateDownloadState.active) return { wasActive: false };
+    try {
+        if (activeUpdateRequest) activeUpdateRequest.destroy(new Error('user cancelled'));
+    } catch (e) {}
+    try {
+        if (activeUpdateFileStream) activeUpdateFileStream.close();
+    } catch (e) {}
+    try {
+        if (activeUpdateTempPath && fs.existsSync(activeUpdateTempPath)) {
+            fs.unlinkSync(activeUpdateTempPath);
+        }
+    } catch (e) {}
+    activeUpdateRequest = null;
+    activeUpdateFileStream = null;
+    activeUpdateTempPath = null;
+    updateDownloadState = { active: false, percent: 0, text: '', url: null };
+    broadcastUpdateProgress();
+    console.log('[UPDATE] Download cancelled by user');
+    return { wasActive: true };
+});
 
 ipcMain.handle('download-app-update', async (event, url) => {
     if (updateDownloadState.active) {
@@ -60,22 +86,35 @@ ipcMain.handle('download-app-update', async (event, url) => {
         return { alreadyDownloading: true };
     }
     updateDownloadState = { active: true, percent: 0, text: 'Подключение...', url };
+    broadcastUpdateProgress();
 
     return new Promise((resolve) => {
         const tempPath = path.join(app.getPath('temp'), 'ZapretGUISetup.exe');
+        // Wipe any leftover temp file from a previous run/cancel
+        try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch (e) {}
         const file = fs.createWriteStream(tempPath);
+        activeUpdateFileStream = file;
+        activeUpdateTempPath = tempPath;
+
+        const cleanupRefs = () => {
+            activeUpdateRequest = null;
+            activeUpdateFileStream = null;
+            activeUpdateTempPath = null;
+        };
 
         const failed = (reason) => {
             try { file.close(); } catch (e) {}
+            try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch (e) {}
             updateDownloadState = { active: false, percent: 0, text: '', url: null };
             broadcastUpdateProgress();
+            cleanupRefs();
             console.error('[UPDATE DOWNLOAD]', reason);
             resolve(false);
         };
 
         const handleRes = (res) => {
             if (res.statusCode === 301 || res.statusCode === 302) {
-                https.get(res.headers.location, { headers: { 'User-Agent': 'ZapretGUI-App' } }, handleRes).on('error', failed);
+                activeUpdateRequest = https.get(res.headers.location, { headers: { 'User-Agent': 'ZapretGUI-App' } }, handleRes).on('error', failed);
                 return;
             }
             if (res.statusCode !== 200) return failed('HTTP ' + res.statusCode);
@@ -95,6 +134,7 @@ ipcMain.handle('download-app-update', async (event, url) => {
                 updateDownloadState.percent = 100;
                 updateDownloadState.text = 'Запуск установщика...';
                 broadcastUpdateProgress();
+                cleanupRefs();
                 exec(`start "" "${tempPath}"`);
                 isQuitting = true;
                 app.quit();
@@ -102,7 +142,7 @@ ipcMain.handle('download-app-update', async (event, url) => {
             });
             res.on('error', () => failed('response error'));
         };
-        https.get(url, { headers: { 'User-Agent': 'ZapretGUI-App' } }, handleRes).on('error', failed);
+        activeUpdateRequest = https.get(url, { headers: { 'User-Agent': 'ZapretGUI-App' } }, handleRes).on('error', failed);
     });
 });
 

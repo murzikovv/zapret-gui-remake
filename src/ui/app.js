@@ -761,37 +761,71 @@ let latestAppUpdateUrl = null;
 if (api.onAppUpdateProgress) {
     api.onAppUpdateProgress((data) => {
         const wrap = el('update-progress-wrap');
-        if (!wrap) return;
-        wrap.classList.remove('hidden');
-        el('update-progress-fill').style.width = data.percent + '%';
-        el('update-progress-percent').textContent = data.percent + '%';
-        el('update-progress-text').textContent = data.text;
-        if (data.percent > 0 && data.percent < 100) {
-            el('btn-app-download-now').classList.add('hidden');
+        if (wrap) {
+            wrap.classList.remove('hidden');
+            el('update-progress-fill').style.width = data.percent + '%';
+            el('update-progress-percent').textContent = data.percent + '%';
+            el('update-progress-text').textContent = data.text;
+        }
+
+        const downloadBtn = el('btn-app-download-now');
+        const cancelBtn = el('btn-app-download-cancel');
+        const titleBtn = el('btn-app-update');
+
+        if (data.active === true || (data.percent > 0 && data.percent < 100)) {
+            // Download in progress
+            if (downloadBtn) downloadBtn.classList.add('hidden');
+            if (cancelBtn) cancelBtn.classList.remove('hidden');
+            if (titleBtn) titleBtn.classList.add('has-update'); // keep pulse
+        } else if (data.percent >= 100) {
+            // Done — installer will launch, app will quit
+            if (cancelBtn) cancelBtn.classList.add('hidden');
+            if (downloadBtn) downloadBtn.classList.add('hidden');
+        } else {
+            // Inactive (cancelled or never started)
+            if (cancelBtn) cancelBtn.classList.add('hidden');
         }
     });
 }
 
+// Cancel button
+setOnClick('btn-app-download-cancel', async () => {
+    if (!api.cancelAppUpdateDownload) return;
+    if (!confirm('Прервать загрузку обновления?')) return;
+    await api.cancelAppUpdateDownload();
+    // Reset UI
+    el('update-progress-wrap').classList.add('hidden');
+    el('btn-app-download-cancel').classList.add('hidden');
+    el('btn-app-download-now').classList.remove('hidden');
+    el('update-version-label').innerHTML = `<div style="color:var(--text-2);">Загрузка отменена. Нажмите «Скачать и обновить», чтобы повторить.</div>`;
+});
+
 setOnClick('btn-app-update', async () => {
     console.log('[UI] Update button clicked');
-    // Remove pulse once user opens the modal
     el('btn-app-update').classList.remove('has-update');
 
     el('modal-app-update').classList.remove('hidden');
     el('update-version-label').textContent = 'Проверка обновлений...';
     el('update-progress-wrap').classList.add('hidden');
     el('btn-app-download-now').classList.add('hidden');
+    el('btn-app-download-cancel').classList.add('hidden');
 
-    // If a download is already in flight, attach to it instead of starting another
+    // If a download is already in flight, attach to it instead of starting a new check.
+    // This is the key fix: reopening the modal during download must NOT trigger a fresh check
+    // or download — only show live progress.
     try {
         const state = await api.getUpdateDownloadState();
         if (state && state.active) {
-            el('update-version-label').innerHTML = `<div style="color:var(--accent); font-weight:600;">Идёт загрузка обновления…</div>`;
+            el('update-version-label').innerHTML = `
+                <div style="color:var(--accent); font-weight:700; font-size:1.05rem; margin-bottom:6px;">⬇ Идёт загрузка обновления…</div>
+                <div style="color:var(--text-2); font-size:0.82rem;">Можешь закрыть это окно — загрузка продолжится в фоне. Когда закончится, установщик откроется автоматически.</div>
+            `;
             el('update-progress-wrap').classList.remove('hidden');
             el('update-progress-fill').style.width = state.percent + '%';
             el('update-progress-percent').textContent = state.percent + '%';
             el('update-progress-text').textContent = state.text || 'Загрузка...';
             el('btn-app-download-now').classList.add('hidden');
+            el('btn-app-download-cancel').classList.remove('hidden');
             return;
         }
     } catch (e) {}
@@ -857,21 +891,24 @@ setOnClick('btn-app-download-now', async () => {
     if (!latestAppUpdateUrl) return;
 
     el('btn-app-download-now').classList.add('hidden');
+    el('btn-app-download-cancel').classList.remove('hidden');
     el('update-progress-wrap').classList.remove('hidden');
     el('update-progress-fill').style.width = '0%';
     el('update-progress-percent').textContent = '0%';
     el('update-progress-text').textContent = 'Подключение...';
+    el('update-version-label').innerHTML = `
+        <div style="color:var(--accent); font-weight:700; font-size:1.05rem; margin-bottom:6px;">⬇ Идёт загрузка обновления…</div>
+        <div style="color:var(--text-2); font-size:0.82rem;">Можешь закрыть это окно — загрузка продолжится в фоне. Когда закончится, установщик откроется автоматически.</div>
+    `;
 
     const result = await api.downloadAppUpdate(latestAppUpdateUrl);
-    // Main returns true on success (app quits to launch installer), false on error,
-    // or { alreadyDownloading: true } if a previous download was still in flight.
-    if (result === true) return; // app will quit shortly
-    if (result && result.alreadyDownloading) {
-        // Progress events keep flowing; nothing to do
-        return;
-    }
+    if (result === true) return; // app quitting to launch installer
+    if (result && result.alreadyDownloading) return; // progress events keep flowing
+
+    // Real failure
     alert('Ошибка при загрузке обновления');
     el('btn-app-download-now').classList.remove('hidden');
+    el('btn-app-download-cancel').classList.add('hidden');
     el('update-progress-wrap').classList.add('hidden');
 });
 

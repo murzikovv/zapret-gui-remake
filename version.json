@@ -1,5 +1,5 @@
 {
-  "version": "1.2.8b",
+  "version": "1.2.8c",
   "url": "https://github.com/murzikovv/zapret-gui-remake/releases/latest/download/ZapretGUISetup.exe",
-  "changelog": "отображение пинга, графики, оптимизация кода"
+  "changelog": "кнопка Отмены загрузки обновления + улучшен UX переоткрытия модалки"
 }

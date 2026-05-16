@@ -1,6 +1,6 @@
 {
   "name": "zapret-gui-remake",
-  "version": "1.2.8b",
+  "version": "1.2.8c",
   "description": "Remake of Zapret GUI in Vanilla JS",
   "main": "src/main.js",
   "scripts": {
