@@ -5,7 +5,7 @@ const net = require('net');
 const { spawn, exec, execFile, execSync } = require('child_process');
 const https = require('https');
 
-const APP_VERSION = '1.2.9';
+const APP_VERSION = '1.2.9b';
 const UPDATE_URL = 'https://raw.githubusercontent.com/murzikovv/zapret-gui-remake/main/version.json';
 
 ipcMain.handle('check-app-update', async () => {
@@ -467,6 +467,7 @@ app.whenReady().then(() => {
         try { app.setAppUserModelId('com.murzikov.zapretgui'); } catch (e) {}
     }
     createWindow();
+    cleanupStaleDevAutostartEntries();
     selfHealAutostart();
 
     // Global hotkey: Ctrl+Shift+Z toggles bypass even when window is hidden in tray
@@ -915,6 +916,34 @@ function selfHealAutostart() {
     if (!prefs.enable) return;
     applyAutostart(true, !!prefs.minimizeOnStart);
     console.log('[AUTOSTART] Refreshed login item path to', process.execPath);
+}
+
+// Scan HKCU\...\Run for any entry that points to a `node_modules\electron\dist\electron.exe`
+// (a leftover from old dev runs that registered autostart). Such entries open the bare
+// Electron welcome screen on boot. Removing them is always safe — real installed apps
+// never live inside node_modules.
+function cleanupStaleDevAutostartEntries() {
+    if (process.platform !== 'win32') return;
+    try {
+        const out = execSync('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"', { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+        const lines = out.split(/\r?\n/);
+        for (const line of lines) {
+            // Format: "    <Name>    REG_SZ    <Value>"
+            const m = line.match(/^\s+(\S.*?\S)\s+REG_SZ\s+(.+)$/);
+            if (!m) continue;
+            const [, name, value] = m;
+            if (/node_modules\\electron\\dist\\electron\.exe/i.test(value)) {
+                console.log('[AUTOSTART] Removing stale dev entry:', name, '→', value.trim());
+                try {
+                    execFile('reg.exe', ['delete', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', name, '/f'], { windowsHide: true });
+                } catch (e) {
+                    console.warn('[AUTOSTART] failed to remove:', name, e.message);
+                }
+            }
+        }
+    } catch (e) {
+        // Reg query failed (e.g. no entries) — non-fatal
+    }
 }
 
 ipcMain.handle('check-autostart', () => {
