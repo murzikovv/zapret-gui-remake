@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- CSP: only allow our own scripts/styles + data:/blob: images (bg image). No remote JS, no inline JS via eval. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' wss: https:; object-src 'none'; base-uri 'self';">
+    <!-- CSP: block remote JS and external eval, but allow inline handlers used throughout HTML (onclick="..."). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' wss: https:; object-src 'none'; base-uri 'self';">
     <title>Zapret GUI</title>
     <link rel="stylesheet" href="style.css">
 </head>
