@@ -29,6 +29,17 @@ const el = (id) => document.getElementById(id);
 const setupScreen = el('setup-screen');
 const mainApp = el('main-app');
 
+// Show running app version in the titlebar so users always know what they have installed
+if (api.getAppVersion) {
+    api.getAppVersion().then(v => {
+        const label = el('app-version-label');
+        if (label && v) {
+            label.textContent = 'v' + v;
+            label.title = `Текущая версия приложения: v${v}`;
+        }
+    }).catch(() => {});
+}
+
 // ─── Toast notifications (non-blocking replacement for alert/confirm) ───
 const TOAST_ICONS = {
     success: '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',

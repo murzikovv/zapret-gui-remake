@@ -1,5 +1,5 @@
 {
-  "version": "1.2.9c",
+  "version": "1.2.9d",
   "url": "https://github.com/murzikovv/zapret-gui-remake/releases/latest/download/ZapretGUISetup.exe",
-  "changelog": "КРИТИЧЕСКИЙ ХОТФИКС: исправлены неработающие кнопки (закрытие модалок, окна, кнопки выхода и др.) — CSP блокировал inline-обработчики"
+  "changelog": "Версия теперь видна в шапке приложения. Если кнопки не работают — это была v1.2.9 или 1.2.9b, обновитесь до этой."
 }
