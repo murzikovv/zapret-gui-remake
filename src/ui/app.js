@@ -1353,12 +1353,16 @@ function setStrategyStatus(running, name) {
         startUptime();
     } else {
         const uptime = uptimeStart ? formatUptime(Date.now() - uptimeStart) : null;
-        if (uptime) {
-            log(`■ Обход остановлен · работал ${uptime}`);
-            // Strategies that ran for >30s count as "success" (winws didn't die immediately)
-            const ms = Date.now() - uptimeStart;
-            if (runningStrategyName) recordStrategyUptime(runningStrategyName, ms);
-            if (ms > 30000 && selectedStrategy) recordStrategyResult(selectedStrategy, true);
+        if (uptime) log(`■ Обход остановлен · работал ${uptime}`);
+        // Stats updates are best-effort — never let them block the UI sync below
+        try {
+            if (uptime && selectedStrategy) {
+                const ms = Date.now() - uptimeStart;
+                recordStrategyUptime(selectedStrategy, ms);
+                if (ms > 30000) recordStrategyResult(selectedStrategy, true);
+            }
+        } catch (e) {
+            console.warn('[STATS] update failed:', e);
         }
         sideBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Запустить`;
         sideBtn.classList.remove('danger');

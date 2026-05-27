@@ -1,5 +1,5 @@
 {
-  "version": "1.2.9d",
+  "version": "1.2.9e",
   "url": "https://github.com/murzikovv/zapret-gui-remake/releases/latest/download/ZapretGUISetup.exe",
-  "changelog": "Версия теперь видна в шапке приложения. Если кнопки не работают — это была v1.2.9 или 1.2.9b, обновитесь до этой."
+  "changelog": "ФИКС: кнопка \"Отключиться\" не возвращалась в \"Подключиться\" после отключения — была ошибка undefined variable, прерывала обновление UI. Теперь UI всегда синхронизирован."
 }
