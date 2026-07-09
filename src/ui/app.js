@@ -47,7 +47,7 @@ const TOAST_ICONS = {
     info:    '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
     warn:    '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
 };
-function toast(message, type = 'info', durationMs = 3500) {
+function toast(message, type = 'info', durationMs = 3500, onClick = null) {
     const container = el('toast-container');
     if (!container) return;
     const div = document.createElement('div');
@@ -62,7 +62,9 @@ function toast(message, type = 'info', durationMs = 3500) {
         div.classList.add('removing');
         setTimeout(() => div.remove(), 180);
     };
-    div.onclick = remove;
+    // Clicking an actionable toast triggers its action (and dismisses); plain toasts just dismiss
+    div.onclick = onClick ? () => { remove(); try { onClick(); } catch (e) {} } : remove;
+    if (onClick) div.style.cursor = 'pointer';
     setTimeout(remove, durationMs);
 }
 
@@ -798,39 +800,9 @@ setOnClick('btn-service-manager', async () => {
 });
 
 // ─── Analytics ───
-let analyticsWs = null;
-let analyticsPingInterval = null;
-
-function connectAnalytics() {
-    const url = 'wss://zapret-admin-murzikov-stats.loca.lt';
-    if (analyticsWs) {
-        analyticsWs.close();
-    }
-    if (analyticsPingInterval) {
-        clearInterval(analyticsPingInterval);
-    }
-    
-    try {
-        analyticsWs = new WebSocket(url);
-        analyticsWs.onopen = () => {
-            console.log('[Analytics] Connected');
-            // Ping every 20 seconds to keep localtunnel connection alive
-            analyticsPingInterval = setInterval(() => {
-                if (analyticsWs.readyState === WebSocket.OPEN) {
-                    analyticsWs.send(JSON.stringify({ type: 'ping' }));
-                }
-            }, 20000);
-        };
-        analyticsWs.onerror = () => {};
-        analyticsWs.onclose = () => {
-            if (analyticsPingInterval) clearInterval(analyticsPingInterval);
-            setTimeout(connectAnalytics, 15000); // Reconnect every 15s
-        };
-    } catch (e) {
-        console.warn('[Analytics] connection failed');
-    }
-}
-setTimeout(connectAnalytics, 2000);
+// Moved to the MAIN process (src/main.js, startAnalyticsHeartbeat): renderer timers
+// get throttled by Chromium when the window is minimized/in tray, which silently
+// dropped users from the online counter. Main-process heartbeats are never throttled.
 
 // ─── App Updates ───
 let latestAppUpdateUrl = null;
@@ -945,13 +917,23 @@ setOnClick('btn-app-update', async () => {
     }
 });
 
-// Silent background update check — only lights up button if update exists, removes glow if up to date
+// Silent background update check — lights up the titlebar button and (once per
+// version) shows a clickable toast so the update is actually noticed.
 async function checkAppUpdateSilent() {
     try {
         const res = await api.checkAppUpdate();
         if (res && res.success) {
             if (res.hasUpdate) {
                 el('btn-app-update').classList.add('has-update');
+                // Toast once per discovered version — not on every 5-min recheck
+                const notified = localStorage.getItem('zapret-update-toast-version');
+                if (res.version && notified !== res.version) {
+                    localStorage.setItem('zapret-update-toast-version', res.version);
+                    toast(`Доступна новая версия v${res.version} — нажмите, чтобы обновить`, 'info', 10000, () => {
+                        const btn = el('btn-app-update');
+                        if (btn && btn.onclick) btn.onclick();
+                    });
+                }
             } else {
                 // Ensure button is NOT glowing if we're on the latest version
                 el('btn-app-update').classList.remove('has-update');
@@ -992,25 +974,49 @@ setOnClick('btn-app-download-now', async () => {
 });
 
 // Initialization
+// Orphan bypass handling: adopt / ignore / kill. "ignore" exists because the detected
+// winws may belong to the user's VPN client — killing it would break their VPN.
+async function applyOrphanAction(action) {
+    if (action === 'adopt') {
+        await api.adoptOrphanZapret();
+        setStrategyStatus(true, '(внешний обход)');
+        log('✓ Подключено к уже запущенному обходу');
+    } else if (action === 'kill') {
+        await api.killOrphanZapret();
+        log('■ Внешний обход остановлен');
+    } else {
+        log('• Внешний обход проигнорирован (не трогаем)');
+    }
+}
+
+window.resolveOrphanChoice = async (action) => {
+    el('modal-orphan').classList.add('hidden');
+    const remember = el('orphan-remember-cb');
+    if (remember && remember.checked) {
+        localStorage.setItem('zapret-orphan-action', action);
+    }
+    try { await applyOrphanAction(action); }
+    catch (e) { console.warn('[ORPHAN] action failed:', e); }
+};
+
 async function checkForOrphanZapret() {
     if (!api.detectOrphanZapret) return;
     try {
         const res = await api.detectOrphanZapret();
         if (!res || !res.alive || res.hasOurProcess) return;
-        // winws живёт, но мы его не запускали — спрашиваем юзера
-        const choice = confirm(
-            'Обнаружен уже запущенный обход (winws/dvtws).\n\n' +
-            'OK — продолжать с ним (приложение начнёт показывать его как активный).\n' +
-            'Отмена — остановить его и начать с чистого листа.'
-        );
-        if (choice) {
-            await api.adoptOrphanZapret();
-            setStrategyStatus(true, '(внешний обход)');
-            log('✓ Подключено к уже запущенному обходу');
-        } else {
-            await api.killOrphanZapret();
-            log('■ Внешний обход остановлен');
+
+        // Saved answer from "больше не спрашивать" — apply silently, no dialog
+        const saved = localStorage.getItem('zapret-orphan-action');
+        if (saved === 'adopt' || saved === 'ignore' || saved === 'kill') {
+            await applyOrphanAction(saved);
+            return;
         }
+
+        const namesEl = el('orphan-process-names');
+        if (namesEl) namesEl.textContent = (res.processes || []).join(', ') || 'winws/dvtws';
+        const remember = el('orphan-remember-cb');
+        if (remember) remember.checked = false;
+        el('modal-orphan').classList.remove('hidden');
     } catch (e) {
         console.warn('[ORPHAN] detection failed:', e);
     }
@@ -1752,11 +1758,20 @@ async function refreshServiceModal() {
     el('select-cfg-ipset').value = config.IPSET_FILTER || 'none';
     const ar = el('select-cfg-autoreconnect');
     if (ar) ar.value = localStorage.getItem('zapret-auto-reconnect') === 'on' ? 'on' : 'off';
+    const orph = el('select-cfg-orphan');
+    if (orph) orph.value = localStorage.getItem('zapret-orphan-action') || 'ask';
 }
 
 setOnChange('select-cfg-autoreconnect', (e) => {
     localStorage.setItem('zapret-auto-reconnect', e.target.value);
     toast('Авто-реконнект: ' + (e.target.value === 'on' ? 'ВКЛ' : 'ВЫКЛ'), 'info', 2000);
+});
+
+const ORPHAN_ACTION_LABELS = { ask: 'спрашивать', adopt: 'подключаться', ignore: 'игнорировать', kill: 'останавливать' };
+setOnChange('select-cfg-orphan', (e) => {
+    if (e.target.value === 'ask') localStorage.removeItem('zapret-orphan-action');
+    else localStorage.setItem('zapret-orphan-action', e.target.value);
+    toast('Внешний обход: ' + (ORPHAN_ACTION_LABELS[e.target.value] || e.target.value), 'info', 2000);
 });
 
 setOnClick('btn-service-install', async () => {

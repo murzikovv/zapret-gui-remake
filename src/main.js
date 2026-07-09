@@ -5,7 +5,7 @@ const net = require('net');
 const { spawn, exec, execFile, execSync } = require('child_process');
 const https = require('https');
 
-const APP_VERSION = '1.2.9f';
+const APP_VERSION = '1.3.0';
 const UPDATE_URL = 'https://raw.githubusercontent.com/murzikovv/zapret-gui-remake/main/version.json';
 
 ipcMain.handle('check-app-update', async () => {
@@ -462,6 +462,54 @@ function createTray() {
     }
 }
 
+// ─── Anonymous usage analytics: heartbeat from the MAIN process ───
+// Lives here (not in the renderer) so it keeps beating while the window is
+// minimized or hidden in tray — Chromium throttles renderer timers, main is never
+// throttled. Stateless HTTP + persistent anonymous id → the server counts unique
+// PEOPLE within a time window, so tunnel drops / app restarts can't skew the number.
+const ANALYTICS_HOST = 'zapret-admin-murzikov-stats.loca.lt';
+const ANALYTICS_HB_INTERVAL_MS = 45_000;
+let analyticsClientId = null;
+
+function getAnalyticsClientId() {
+    if (analyticsClientId) return analyticsClientId;
+    const idPath = path.join(app.getPath('userData'), 'analytics-id.txt');
+    try {
+        const saved = fs.readFileSync(idPath, 'utf-8').trim();
+        if (/^[0-9a-fA-F-]{8,64}$/.test(saved)) {
+            analyticsClientId = saved;
+            return analyticsClientId;
+        }
+    } catch (e) { /* first run */ }
+    analyticsClientId = require('crypto').randomUUID();
+    try { fs.writeFileSync(idPath, analyticsClientId, 'utf-8'); } catch (e) {}
+    return analyticsClientId;
+}
+
+function analyticsRequest(pathname) {
+    try {
+        const req = https.request({
+            hostname: ANALYTICS_HOST,
+            path: pathname,
+            method: 'GET',
+            headers: {
+                'Bypass-Tunnel-Reminder': 'true', // skip localtunnel interstitial
+                'User-Agent': `ZapretGUI/${APP_VERSION}`,
+            },
+            timeout: 10_000,
+        }, res => res.resume());
+        req.on('timeout', () => req.destroy());
+        req.on('error', () => {}); // silent — the next heartbeat is the retry
+        req.end();
+    } catch (e) { /* never let analytics break the app */ }
+}
+
+function startAnalyticsHeartbeat() {
+    const beat = () => analyticsRequest(`/hb?id=${getAnalyticsClientId()}&v=${encodeURIComponent(APP_VERSION)}`);
+    beat(); // show up in stats immediately, not after the first interval
+    setInterval(beat, ANALYTICS_HB_INTERVAL_MS);
+}
+
 app.whenReady().then(() => {
     // Ensures the taskbar groups by our AppUserModelID and shows the right icon on Windows
     if (process.platform === 'win32') {
@@ -470,6 +518,7 @@ app.whenReady().then(() => {
     createWindow();
     cleanupStaleDevAutostartEntries();
     selfHealAutostart();
+    startAnalyticsHeartbeat();
 
     // Global hotkey: Ctrl+Shift+Z toggles bypass even when window is hidden in tray
     try {
@@ -490,6 +539,10 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
     try { globalShortcut.unregisterAll(); } catch (e) {}
+    // Fire-and-forget "I'm gone" so the dashboard drops us instantly instead of
+    // waiting for the online window to expire. If it doesn't get through — fine,
+    // the server ages us out anyway.
+    analyticsRequest(`/bye?id=${getAnalyticsClientId()}`);
 });
 
 app.on('window-all-closed', () => {
@@ -559,19 +612,29 @@ function sendZapretLog(line) {
 let winwsWatchdog = null;
 const ZAPRET_BINS = ['winws.exe', 'dvtws.exe', 'nfqws.exe', 'zapret.exe'];
 
-function isAnyZapretBinaryRunning() {
+// Returns exact-matched zapret binary names currently running, e.g. ['winws.exe'].
+// Exact match on the tasklist image-name field — NOT substring over the whole output.
+// Substring matching caused false positives (VPN clients / helpers with similar names
+// like "*-winws.exe" triggered the "чужой обход запущен" dialog on every launch).
+function listZapretProcesses() {
     return new Promise(resolve => {
-        // /FI "IMAGENAME eq X" returns "INFO: No tasks..." with exit 0 when absent.
-        // Easier: list all our names and check stdout.
         exec('tasklist /NH /FO CSV', { windowsHide: true }, (err, stdout) => {
-            if (err) return resolve(true); // fail open — don't kill UI state on transient tasklist error
-            const lower = stdout.toLowerCase();
-            for (const bin of ZAPRET_BINS) {
-                if (lower.includes(bin)) return resolve(true);
+            if (err) return resolve(null); // null = "couldn't check", distinct from "none found"
+            const found = new Set();
+            for (const line of stdout.split(/\r?\n/)) {
+                // CSV row: "Image Name","PID","Session Name","Session#","Mem Usage"
+                const m = line.match(/^"([^"]+)"/);
+                if (m && ZAPRET_BINS.includes(m[1].toLowerCase())) found.add(m[1].toLowerCase());
             }
-            resolve(false);
+            resolve([...found]);
         });
     });
+}
+
+async function isAnyZapretBinaryRunning() {
+    const procs = await listZapretProcesses();
+    if (procs === null) return true; // fail open — don't kill UI state on transient tasklist error
+    return procs.length > 0;
 }
 
 function startWinwsWatchdog() {
@@ -691,8 +754,14 @@ function cleanupZapretBinaries() {
 // Renderer asks at boot whether any zapret binaries are already running.
 // If so, UI shows a banner offering to adopt the session (mark as running) or kill it.
 ipcMain.handle('detect-orphan-zapret', async () => {
-    const alive = await isAnyZapretBinaryRunning();
-    return { alive, hasOurProcess: !!runningStrategyName };
+    const processes = await listZapretProcesses();
+    // processes === null means tasklist failed — report "nothing found" to the UI
+    // so a transient error never spams the orphan dialog.
+    return {
+        alive: Array.isArray(processes) && processes.length > 0,
+        processes: processes || [],
+        hasOurProcess: !!runningStrategyName,
+    };
 });
 
 ipcMain.handle('kill-orphan-zapret', async () => {

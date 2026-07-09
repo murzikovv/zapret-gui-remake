@@ -346,6 +346,15 @@
                             </select>
                         </div>
                         <div class="cfg-row">
+                            <span class="cfg-label" title="Что делать, если при запуске найден обход (winws), запущенный не этим приложением — например, вашим VPN">Внешний обход</span>
+                            <select class="input" style="width:auto; font-size:0.78rem;" id="select-cfg-orphan">
+                                <option value="ask">Спрашивать</option>
+                                <option value="adopt">Подключаться</option>
+                                <option value="ignore">Игнорировать</option>
+                                <option value="kill">Останавливать</option>
+                            </select>
+                        </div>
+                        <div class="cfg-row">
                             <span class="cfg-label" title="Глобальный хоткей для подключения/отключения. Работает даже когда окно скрыто.">Хоткей Ctrl+Shift+Z</span>
                             <span style="font-size:0.78rem; color:var(--text-3);">Всегда вкл</span>
                         </div>
@@ -407,6 +416,45 @@
                         В трей
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Orphan / external bypass detected -->
+    <div class="modal-overlay hidden" id="modal-orphan">
+        <div class="modal-content" style="width:430px;">
+            <div class="modal-header">
+                <h3>Обнаружен запущенный обход</h3>
+                <button class="icon-btn" onclick="resolveOrphanChoice('ignore')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+                <p style="color:var(--text-2); line-height:1.6; margin:0; font-size:0.85rem;">
+                    Найден работающий процесс обхода, который запускало не это приложение:
+                    <span id="orphan-process-names" style="color:var(--text-1); font-weight:600;"></span>.
+                    Это может быть другой запрет или ваш VPN-клиент.
+                </p>
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.82rem; color:var(--text-2);">
+                    <input type="checkbox" id="orphan-remember-cb">
+                    Больше не спрашивать (запомнить выбор)
+                </label>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+                    <button class="btn" onclick="resolveOrphanChoice('adopt')">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                        Подключиться
+                    </button>
+                    <button class="btn-secondary" onclick="resolveOrphanChoice('ignore')">
+                        Игнорировать
+                    </button>
+                    <button class="btn-secondary" style="color:var(--error);" onclick="resolveOrphanChoice('kill')">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/></svg>
+                        Остановить
+                    </button>
+                </div>
+                <p style="color:var(--text-3); line-height:1.5; margin:0; font-size:0.72rem;">
+                    «Игнорировать» — ничего не трогать (безопасно для VPN). «Остановить» завершит этот процесс.
+                </p>
             </div>
         </div>
     </div>
