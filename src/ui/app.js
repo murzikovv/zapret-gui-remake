@@ -1194,7 +1194,14 @@ function selectStrategy(name, divElement) {
 // Start / Stop Strategy
 let connectInFlight = false;
 async function startSelectedStrategy() {
-    if (!selectedStrategy) return;
+    // If a bypass is already running (including an adopted external session that has
+    // no selectedStrategy), a click means "stop" — so only bail on the selection
+    // check when we're NOT running. Otherwise the "Отключиться" button would be dead
+    // and stay stuck on "Отключиться".
+    if (!isStrategyRunning && !selectedStrategy) {
+        toast('Сначала выберите обход из списка', 'warn');
+        return;
+    }
     if (connectInFlight) return; // ignore spam clicks while a transition is in progress
     connectInFlight = true;
     const sideBtn = el('btn-start-strategy');

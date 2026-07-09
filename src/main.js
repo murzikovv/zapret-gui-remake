@@ -5,7 +5,7 @@ const net = require('net');
 const { spawn, exec, execFile, execSync } = require('child_process');
 const https = require('https');
 
-const APP_VERSION = '1.2.9e';
+const APP_VERSION = '1.2.9f';
 const UPDATE_URL = 'https://raw.githubusercontent.com/murzikovv/zapret-gui-remake/main/version.json';
 
 ipcMain.handle('check-app-update', async () => {
